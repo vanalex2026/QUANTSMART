@@ -51,6 +51,13 @@ export interface PatternMatch {
    * from the query's regime/session.
    */
   contextWeight?: number;
+  /**
+   * Bounded recency multiplier derived from the endpoint's closed timestamp
+   * relative to the query-window start.  This is causal metadata: old
+   * analogues remain eligible, but recent closed-bar evidence carries modestly
+   * more weight when the market regime is changing.
+   */
+  recencyWeight?: number;
   outcome: OutcomeDirection[];
   forwardReturnsAtr: number[];
   sameRegime: boolean;
@@ -531,6 +538,31 @@ export interface PatternAnalysis {
   engine: { id: string; version: string; causal: true; thresholdAtr: number };
 }
 
+/**
+ * Focused chronology audit for a frozen/saved tape and its live extension.
+ *
+ * The Atlas normally receives a saved snapshot followed by a verified MT5
+ * tail.  This diagnostic freezes the query at `asOf`, mutates every row after
+ * that boundary, and checks that the measured query, analogue recurrence and
+ * endpoint purge are unchanged.  It is intentionally read-only and carries
+ * no execution meaning; callers can use it in a smoke test or provenance
+ * panel without serialising a second prediction model.
+ */
+export interface NoLookaheadDiagnostic {
+  ok: boolean;
+  timeframe: PatternTimeframe;
+  asOf: string | null;
+  baselineAsOf: string | null;
+  mutatedAsOf: string | null;
+  futureRows: number;
+  /** Future rows that are valid closed candles and were actually mutated. */
+  eligibleFutureRows: number;
+  unchanged: boolean;
+  recurrenceCausal: boolean;
+  matchesCausal: boolean;
+  reason: string;
+}
+
 export interface NoveltyDecomposition {
   /** Number of finite causal candidate endpoints used in this decomposition. */
   causalCandidates: number;
@@ -599,9 +631,62 @@ const MAX_MATCHES = 48;
 const OUTCOME_THRESHOLD_ATR = 0.12;
 const MIN_SESSION_SAMPLES = 8;
 const MIN_CONTEXT_EFFECTIVE_SUPPORT = 3;
+
+/**
+ * Validate the denominator chain used by the focused H+1 forecast readout.
+ * `calibration.effectiveN` includes the three pseudo-observations added by
+ * the empirical-Bayes posterior, while analogue coverage counts only actual
+ * retained endpoints.  A persisted/replayed payload must not be allowed to
+ * advertise more effective or independent support than those endpoints can
+ * provide; callers should keep the posterior visible but withhold direction.
+ */
+export function validateForecastSupportDenominators(
+  prediction: Pick<HorizonPrediction, "sampleN" | "calibration"> | undefined,
+  coverage: PatternAnalysis["analogueCoverage"] | undefined,
+): { ok: boolean; reason: string } {
+  // Legacy analyses did not persist analogue coverage. Preserve their
+  // inspectable behaviour and let the ordinary sample/effective-N gates run.
+  if (coverage === undefined) return { ok: true, reason: "Analogue coverage metadata unavailable (legacy analysis)." };
+  if (coverage === null || typeof coverage !== "object" || Array.isArray(coverage)) {
+    return { ok: false, reason: "Analogue coverage denominator is malformed." };
+  }
+  const integer = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0;
+  if (!integer(coverage.causalCandidates) || !integer(coverage.rankedCandidates) || !integer(coverage.selectedSamples)) {
+    return { ok: false, reason: "Analogue coverage denominator is malformed." };
+  }
+  if (coverage.rankedCandidates > coverage.causalCandidates || coverage.selectedSamples > coverage.rankedCandidates) {
+    return { ok: false, reason: "Analogue coverage counts exceed their causal denominator." };
+  }
+  const independentSelected = coverage.independentSelectedSamples;
+  if (independentSelected !== undefined && (!integer(independentSelected) || independentSelected > coverage.selectedSamples)) {
+    return { ok: false, reason: "Independent analogue support exceeds selected endpoint support." };
+  }
+  const sampleN = prediction?.sampleN;
+  if (!integer(sampleN)) {
+    return { ok: false, reason: "Observed H+1 support is missing or malformed." };
+  }
+  if (sampleN > coverage.selectedSamples) {
+    return { ok: false, reason: "Observed H+1 outcomes exceed selected endpoint support." };
+  }
+  const effectiveN = prediction?.calibration?.effectiveN;
+  // Three uniform pseudo-observations are included in the serialized
+  // calibration effectiveN.  The observed component is bounded by the
+  // outcomes actually present in the reported H+1 prediction, rather than
+  // by every selected endpoint (which may lack a valid outcome after a
+  // malformed or partial replay).  Otherwise stale metadata could inflate
+  // the focused effective-support gate without supplying observed evidence.
+  const observedSupport = sampleN;
+  if (effectiveN !== undefined && (!Number.isFinite(effectiveN) || effectiveN < 0 || effectiveN > observedSupport + 3 + 0.01)) {
+    return { ok: false, reason: "Calibrated effective support exceeds observed H+1 support." };
+  }
+  return { ok: true, reason: "Forecast support denominators are coherent." };
+}
 const MIN_REGIME_SAMPLES = 8;
 /** Minimum posterior margin required before exposing a directional label. */
 const MIN_DIRECTION_MARGIN = 0.05;
+/** Keep older causal analogues visible while adapting modestly to live drift. */
+const RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
+const MIN_RECENCY_WEIGHT = 0.55;
 
 /** Runtime counterpart of NamedCandlePattern. Keep this list explicit so the
  * coverage denominator includes detectors that are absent from one tape. */
@@ -619,6 +704,9 @@ const NAMED_PATTERN_REGISTRY: readonly NamedCandlePattern[] = [
   "BULLISH_STICK_SANDWICH", "BULLISH_TASUKI_GAP", "BEARISH_TASUKI_GAP",
   "BULLISH_MAT_HOLD", "BEARISH_MAT_HOLD", "THREE_STARS_IN_SOUTH", "THREE_STARS_IN_NORTH",
 ];
+
+/** Stable runtime taxonomy for persisted filter and snapshot validation. */
+export const NAMED_CANDLE_PATTERNS: readonly NamedCandlePattern[] = NAMED_PATTERN_REGISTRY;
 
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -647,6 +735,23 @@ function denseRecords(value: unknown): value is Record<string, unknown>[] {
 
 function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
+}
+
+/**
+ * Return a bounded age multiplier using only timestamps strictly before the
+ * current query window.  A floor of 0.55 prevents a long Exness history from
+ * becoming an arbitrary hard cutoff while still letting recent closed bars
+ * respond faster to a regime transition.  Invalid/negative ages fail open to
+ * a neutral multiplier; chronology eligibility remains enforced elsewhere.
+ */
+function causalRecencyWeight(endpointTime: string, queryStartTime: string): number {
+  const endpointMs = timestampMs(endpointTime);
+  const queryMs = timestampMs(queryStartTime);
+  if (!Number.isFinite(endpointMs) || !Number.isFinite(queryMs)) return 1;
+  const ageMs = queryMs - endpointMs;
+  if (!(ageMs > 0)) return 1;
+  const decay = Math.exp(-Math.LN2 * ageMs / RECENCY_HALF_LIFE_MS);
+  return round(clamp(MIN_RECENCY_WEIGHT + (1 - MIN_RECENCY_WEIGHT) * decay, MIN_RECENCY_WEIGHT, 1), 4);
 }
 
 function round(value: number, digits = 4): number {
@@ -797,6 +902,20 @@ function dominantDirection(probabilities: Pick<HorizonPrediction, "up" | "down" 
   const ordered: [OutcomeDirection, number][] = [["UP", probabilities.up], ["DOWN", probabilities.down], ["FLAT", probabilities.flat]];
   ordered.sort((a, b) => b[1] - a[1]);
   return ordered[0][1] - ordered[1][1] >= MIN_DIRECTION_MARGIN ? ordered[0][0] : "FLAT";
+}
+
+/**
+ * Return the reliability class using the same abstaining margin as live
+ * directional forecasts. A raw arg-max would score near-tied UP/DOWN
+ * posteriors as confident directional hits even though the Atlas reports
+ * FLAT and abstains from that signal.
+ */
+function probabilityTopClassIndex(values: number[]): number {
+  const ranked = values
+    .map((value, index) => ({ value, index }))
+    .sort((a, b) => b.value - a.value || a.index - b.index);
+  if (!ranked.length || ranked[0]!.value - (ranked[1]?.value ?? 0) < MIN_DIRECTION_MARGIN) return 2;
+  return ranked[0]!.index;
 }
 
 function descriptor(bars: PatternBar[], index: number): PatternDescriptor {
@@ -971,6 +1090,11 @@ function namedPatternsAt(bars: PatternBar[], index: number): NamedCandlePattern[
   return result;
 }
 
+/** Shared causal taxonomy and H+1 policy for exhaustive retained-history scans.
+ * Callers must validate closed OHLC and M5 continuity before using these primitives.
+ */
+export { namedPatternsAt as detectNamedCandlePatternsAt, atrAt as namedCandleAtrAt, direction as namedCandleOutcomeDirection };
+
 function averageAtr(bars: PatternBar[], index: number, period: number): number {
   const from = Math.max(0, index - period + 1);
   let sum = 0;
@@ -1000,6 +1124,45 @@ function windowSignature(descriptors: PatternDescriptor[], endIndex: number, loo
   return descriptors.slice(endIndex - lookback + 1, endIndex + 1).map((item) => item.signature).join("/");
 }
 
+/**
+ * XAUUSD feeds commonly omit the broker's daily maintenance break and the
+ * Friday-to-Sunday weekend. These are expected session closures, not missing
+ * candles. Keep the allowance narrow and UTC-based; arbitrary intraday gaps
+ * remain quality defects and contiguous analogue windows still fail closed.
+ */
+function expectedSessionBreak(previousMs: number, currentMs: number, timeframe: AtlasInputTimeframe): boolean {
+  const delta = currentMs - previousMs;
+  const interval = TIMEFRAME_MS[timeframe];
+  if (!(delta > interval)) return false;
+  const previous = new Date(previousMs);
+  const current = new Date(currentMs);
+  const previousDay = previous.getUTCDay();
+  const currentDay = current.getUTCDay();
+  const isLastMondayOfMay = current.getUTCMonth() === 4 && currentDay === 1 && current.getUTCDate() >= 25;
+  const isFirstMondayOfSeptember = current.getUTCMonth() === 8 && currentDay === 1 && current.getUTCDate() <= 7;
+  // US Memorial Day/Labor Day closures can extend the normal gold daily
+  // break into the evening reopen. Keep this limited to the known holiday
+  // Mondays and a short same-day gap so arbitrary outages remain visible.
+  if ((isLastMondayOfMay || isFirstMondayOfSeptember)
+    && previous.getUTCDay() === 1
+    && previous.getUTCHours() >= 16
+    && current.getUTCHours() >= 18
+    && current.getUTCHours() <= 23
+    && delta <= 8 * 60 * 60 * 1000) return true;
+  // Weekend closure: Friday evening through Sunday/Monday reopen, bounded so
+  // a multi-day data outage cannot be mistaken for a normal market break.
+  if (previousDay === 5 && (currentDay === 0 || currentDay === 1) && delta <= 80 * 60 * 60 * 1000) return true;
+  // Typical XAUUSD daily maintenance is around 22:00-23:00 UTC. Allow at
+  // most two missing bars for M5/M15 and one for M30/H1.
+  // Exness shifts this break between 20:00 and 22:00 UTC with daylight
+  // saving changes. Keep the window bounded to the final two session hours;
+  // earlier closures remain visible as genuine data defects.
+  const maintenanceWindow = previous.getUTCHours() >= 20 && previous.getUTCHours() <= 23
+    && (current.getUTCHours() >= 22 || current.getUTCHours() <= 1);
+  const maxMaintenanceGap = Math.max(interval * 2, 2 * 60 * 60 * 1000);
+  return maintenanceWindow && delta <= maxMaintenanceGap;
+}
+
 function quality(bars: PatternBar[], gapLimitMs = 45 * 60 * 1000, expectedIntervalMs?: number) {
   let gaps = 0;
   let duplicateTimestamps = 0;
@@ -1008,7 +1171,12 @@ function quality(bars: PatternBar[], gapLimitMs = 45 * 60 * 1000, expectedInterv
     const b = bars[i];
     if (![b.o, b.h, b.l, b.c].every(finite) || b.h < Math.max(b.o, b.c) || b.l > Math.min(b.o, b.c) || b.h < b.l) invalidBars++;
     if (i && bars[i - 1].t === b.t) duplicateTimestamps++;
-    if (i && Date.parse(b.t) - Date.parse(bars[i - 1].t) > (expectedIntervalMs ?? gapLimitMs)) gaps++;
+    if (i) {
+      const previousMs = Date.parse(bars[i - 1].t);
+      const currentMs = Date.parse(b.t);
+      const threshold = expectedIntervalMs ?? gapLimitMs;
+      if (currentMs - previousMs > threshold && !expectedSessionBreak(previousMs, currentMs, expectedIntervalMs == null ? "M5" : (Object.entries(TIMEFRAME_MS).find(([, value]) => value === expectedIntervalMs)?.[0] as AtlasInputTimeframe ?? "M5"))) gaps++;
+    }
   }
   return { gaps, duplicateTimestamps, invalidBars };
 }
@@ -1216,7 +1384,7 @@ function sessionCalibration(
  * with persisted/legacy PatternMatch values.
  */
 function analogueOutcomeWeight(match: PatternMatch): number {
-  return causalCandidateWeight({ d: match.distance, end: 0, similarity: match.similarity, sameRegime: match.sameRegime, sameSession: match.sameSession });
+  return causalCandidateWeight({ d: match.distance, end: 0, similarity: match.similarity, sameRegime: match.sameRegime, sameSession: match.sameSession, recencyWeight: match.recencyWeight });
 }
 
 /**
@@ -1410,7 +1578,7 @@ function overlapSpacingFactor(rows: PatternMatch[], horizon: number, lookback: n
   // bar used by the requested outcome.  Two endpoints can therefore share
   // evidence whenever their gap is shorter than the combined span.  Using
   // `max(lookback, horizon)` under-counted that shared tape (for example a
-  // 5-bar feature window with H+3 still overlaps for gaps 5–7), overstating
+  // 5-bar feature window with H+3 still overlaps for gaps 5â€“7), overstating
   // independent support for the longer-horizon posterior.  Keep this causal
   // adjustment in uncertainty metadata only; posterior probabilities stay
   // unchanged.
@@ -1659,7 +1827,7 @@ function probabilityFoldMetrics(rows: ProbabilisticValidationRow[]): Probability
     const top = Math.max(...values);
     const binIndex = Math.min(PROBABILITY_BIN_COUNT - 1, Math.floor(top * PROBABILITY_BIN_COUNT));
     bins[binIndex].predicted += top;
-    bins[binIndex].correct += values.indexOf(top) === actualIndex ? 1 : 0;
+    bins[binIndex].correct += probabilityTopClassIndex(values) === actualIndex ? 1 : 0;
     bins[binIndex].count++;
   }
   const populated = bins.filter((bin) => bin.count > 0);
@@ -1687,7 +1855,7 @@ function probabilityCalibrationDrift(rows: ProbabilisticValidationRow[], lookbac
     const metrics = probabilityFoldMetrics(items);
     const correctness = items.map((row) => {
       const values = [row.probabilities.up, row.probabilities.down, row.probabilities.flat].map((value) => clamp(value, 0, 1));
-      const topIndex = values.indexOf(Math.max(...values));
+      const topIndex = probabilityTopClassIndex(values);
       const actualIndex = row.actual === "UP" ? 0 : row.actual === "DOWN" ? 1 : 2;
       return topIndex === actualIndex ? 1 : 0;
     });
@@ -1731,7 +1899,7 @@ function probabilityCalibrationDrift(rows: ProbabilisticValidationRow[], lookbac
   const rawScore = clamp(0.5 * eceDelta + 0.35 * brierDelta + 0.15 * accuracyDrop, -1, 1);
   // A fold with densely overlapping queries can look like a sharp temporal
   // break even when it carries little independent evidence. Discount the
-  // first→last drift score by the weaker endpoint's effective support. The
+  // firstâ†’last drift score by the weaker endpoint's effective support. The
   // posterior and held-out labels remain untouched; this only makes the
   // shadow drift classification conservative under sparse/clustered support.
   const endpointEffectiveN = Math.min(first.effectiveN, last.effectiveN);
@@ -1806,6 +1974,7 @@ type CausalCandidate = {
   targetRegime?: boolean;
   sameSession?: boolean;
   similarity?: number;
+  recencyWeight?: number;
 };
 
 /**
@@ -1820,7 +1989,10 @@ function causalCandidateWeight(candidate: CausalCandidate): number {
   const similarityWeight = Math.max(0.05, similarity ** 2);
   const regimeWeight = candidate.sameRegime === false ? 0.65 : 1;
   const sessionWeight = candidate.sameSession === false ? 0.8 : 1;
-  return similarityWeight * regimeWeight * sessionWeight;
+  const recencyWeight = Number.isFinite(candidate.recencyWeight)
+    ? clamp(candidate.recencyWeight!, MIN_RECENCY_WEIGHT, 1)
+    : 1;
+  return similarityWeight * regimeWeight * sessionWeight * recencyWeight;
 }
 
 function causalH1Probability(
@@ -1908,7 +2080,7 @@ function probabilisticValidation(
     // correctness. Ties are resolved in UP/DOWN/FLAT order, deterministically.
     const top = Math.max(...values);
     const binIndex = Math.min(PROBABILITY_BIN_COUNT - 1, Math.floor(top * PROBABILITY_BIN_COUNT));
-    const topIndex = values.indexOf(top);
+    const topIndex = probabilityTopClassIndex(values);
     bins[binIndex].predicted += top;
     bins[binIndex].correct += topIndex === actualIndex ? 1 : 0;
     bins[binIndex].count++;
@@ -2093,6 +2265,13 @@ function walkForward(bars: PatternBar[], lookback: number, vectors: number[][], 
   const validationRows: WalkForwardValidationRow[] = [];
   for (let queryEnd = first; queryEnd <= last; queryEnd += stride) {
     const queryStart = queryEnd - lookback + 1;
+    // A held-out label is only meaningful when the historical query feature
+    // window and its realised H+1 bar form one contiguous timeframe tape.
+    // Candidate windows already use this guard below, but without the query
+    // side a gap could still enter the walk-forward denominator as if the
+    // missing interval were an observed bar.  Keep the validation sample
+    // fail-closed on the same causal grid as production matching.
+    if (!contiguousRange(bars, queryStart, queryEnd + 1, intervalMs)) continue;
     const query = vectors[queryEnd];
     const queryRegime = regimes[queryEnd];
     const querySession = sessions[queryEnd];
@@ -2110,9 +2289,13 @@ function walkForward(bars: PatternBar[], lookback: number, vectors: number[][], 
       const sameRegime = regimes[end] === queryRegime;
       const sameSession = sessions[end] === querySession;
       const d = distance(query, vectors[end]) + (sameRegime ? 0 : 0.12) + (sameSession ? 0 : 0.08);
-      candidates.push({ d, end, sameRegime, sameSession });
+      const recencyWeight = causalRecencyWeight(bars[end].t, bars[queryStart].t);
+      candidates.push({ d, end, sameRegime, sameSession, recencyWeight });
     }
-    candidates.sort((a, b) => a.d - b.d);
+    // Distances can tie for repeated candle windows.  Prefer the newer
+    // causal endpoint in that case so the rank cap does not discard current
+    // regime evidence in favour of the oldest insertion-order rows.
+    candidates.sort((a, b) => (a.d - b.d) || ((b.recencyWeight ?? 1) - (a.recencyWeight ?? 1)) || (b.end - a.end));
     // Production ranks first, retains MAX_MATCHES, then applies the session
     // fallback.  Mirror that order here so calibration scores the same causal
     // posterior instead of an uncapped, session-selected tape.
@@ -2191,12 +2374,15 @@ function evaluateLookback(bars: PatternBar[], lookback: number, targetRegime: Ma
       const targetRegimeMatch = candidateRegime === targetRegime;
       const sameSession = querySession === patternSessionAt(bars[end].t);
       const d = distance(vectors[queryEnd], vectors[end]) + (sameRegime ? 0 : 0.12) + (sameSession ? 0 : 0.08);
-      allCandidates.push({ d, end, sameRegime, targetRegime: targetRegimeMatch, sameSession });
+      const recencyWeight = causalRecencyWeight(bars[end].t, bars[queryStart].t);
+      allCandidates.push({ d, end, sameRegime, targetRegime: targetRegimeMatch, sameSession, recencyWeight });
     }
     const same = allCandidates.filter((candidate) => candidate.targetRegime);
     sameRegimeCandidates += same.length;
     const candidates = useRegime && same.length >= 8 ? same : allCandidates;
-    candidates.sort((a, b) => a.d - b.d);
+    // Keep walk-forward/adaptive ranking aligned with production: ties should
+    // prefer newer causal evidence rather than stable insertion order.
+    candidates.sort((a, b) => (a.d - b.d) || ((b.recencyWeight ?? 1) - (a.recencyWeight ?? 1)) || (b.end - a.end));
     // Adaptive tuning must score the same hierarchical context posterior as
     // production.  Ranking alone can leave a sparse current session mixed
     // with unrelated sessions, so use the same session/regime backoff after
@@ -2364,9 +2550,12 @@ export function analyzeCandlePattern(
       outcome.push(direction(ret));
     }
     const contextWeight = round((sameRegime ? 1 : 0.65) * (sameSession ? 1 : 0.8), 3);
-    matches.push({ endIndex: end, time: bars[end].t, distance: round(d, 4), similarity: round(similarity, 4), contextWeight, outcome, forwardReturnsAtr, sameRegime, session: historicalSession, sameSession, patterns: patternLists[end] });
+    const recencyWeight = causalRecencyWeight(bars[end].t, bars[queryStart].t);
+    matches.push({ endIndex: end, time: bars[end].t, distance: round(d, 4), similarity: round(similarity, 4), contextWeight, recencyWeight, outcome, forwardReturnsAtr, sameRegime, session: historicalSession, sameSession, patterns: patternLists[end] });
   }
-  matches.sort((a, b) => a.distance - b.distance);
+  // Repeated windows often have identical distances.  Break those ties by
+  // recency and endpoint so maxMatches retains the newest causal evidence.
+  matches.sort((a, b) => (a.distance - b.distance) || ((b.recencyWeight ?? 1) - (a.recencyWeight ?? 1)) || (b.endIndex - a.endIndex));
   const best = matches.slice(0, maxMatches);
   const eligible = contextEligible(best, lookback);
   const predictions = HORIZONS.map((horizon) => prediction(eligible.selected, horizon, lookback));
@@ -2629,6 +2818,67 @@ export function analyzeCandlePattern(
     note: driftLabel === "BREAK" ? "Current family has weak or widening historical support; treat the analogue distribution as exploratory." : driftLabel === "WATCH" ? "Recent analogue distances are widening; monitor the next closed-bar loop for regime drift." : "Recent analogue distances remain supported by the earlier tape.",
   };
   return base;
+}
+
+/**
+ * Audit a saved snapshot plus any later live rows without allowing later rows
+ * to affect a fixed query. The comparison is deterministic and read-only.
+ */
+export function noLookaheadDiagnostic(
+  rawBars: PatternBar[],
+  timeframe: PatternTimeframe,
+  symbol = "XAUUSD",
+  options: { lookback?: number; evaluationIndex?: number } = {},
+): NoLookaheadDiagnostic {
+  const intervalMs = TIMEFRAME_MS[timeframe];
+  const requestedLookback = clamp(Math.round(options.lookback ?? DEFAULT_LOOKBACK), 3, 12);
+  const fallback: NoLookaheadDiagnostic = {
+    ok: false, timeframe, asOf: null, baselineAsOf: null, mutatedAsOf: null,
+    futureRows: 0, eligibleFutureRows: 0, unchanged: false, recurrenceCausal: false, matchesCausal: false,
+    reason: "INSUFFICIENT_CLOSED_ROWS",
+  };
+  const valid = rawBars.filter((bar) => {
+    const stamp = timestampMs(String(bar?.t ?? ""));
+    return Number.isFinite(stamp) && stamp % intervalMs === 0 && bar.closed !== false
+      && [bar.o, bar.h, bar.l, bar.c].every(finite)
+      && bar.h >= Math.max(bar.o, bar.c) && bar.l <= Math.min(bar.o, bar.c) && bar.h >= bar.l;
+  });
+  if (valid.length < Math.max(MIN_HISTORY, requestedLookback + 8)) return fallback;
+  const selected = Math.min(valid.length - 1, Math.max(requestedLookback + 8, Math.round(options.evaluationIndex ?? valid.length - 1)));
+  const asOfMs = timestampMs(String(valid[selected].t));
+  const asOf = new Date(asOfMs).toISOString();
+  const cutoff = asOfMs + intervalMs;
+  const prefix = rawBars.filter((bar) => timestampMs(String(bar?.t ?? "")) <= asOfMs);
+  const futureRows = rawBars.filter((bar) => timestampMs(String(bar?.t ?? "")) > asOfMs).length;
+  // A forming, malformed or off-grid tail row is not an eligible lookahead
+  // probe. Counting it as a mutation would let a saved snapshot report a
+  // passing diagnostic even though no future closed candle was exercised.
+  const eligibleFutureRows = rawBars.filter((bar) => {
+    const stamp = timestampMs(String(bar?.t ?? ""));
+    return stamp > asOfMs && stamp % intervalMs === 0 && bar.closed !== false
+      && [bar.o, bar.h, bar.l, bar.c].every(finite)
+      && bar.h >= Math.max(bar.o, bar.c) && bar.l <= Math.min(bar.o, bar.c) && bar.h >= bar.l;
+  }).length;
+  const mutated = rawBars.map((bar) => {
+    const stamp = timestampMs(String(bar?.t ?? ""));
+    if (!(stamp > asOfMs) || ![bar.o, bar.h, bar.l, bar.c].every(finite)) return { ...bar };
+    const shift = 1000 + Math.abs(bar.c - bar.o) * 17;
+    return { ...bar, o: bar.o + shift, h: bar.h + shift, l: bar.l + shift, c: bar.c + shift };
+  });
+  const baseline = analyzeCandlePattern(prefix, timeframe, symbol, { adaptive: false, lookback: requestedLookback, now: cutoff });
+  const replay = analyzeCandlePattern(mutated, timeframe, symbol, { adaptive: false, lookback: requestedLookback, now: cutoff });
+  const projection = (analysis: PatternAnalysis) => JSON.stringify({ asOf: analysis.asOf, bars: analysis.bars, current: analysis.current, matches: analysis.matches, predictions: analysis.predictions, consensus: analysis.consensus, recurrence: analysis.recurrence, novelty: analysis.novelty });
+  const unchanged = projection(baseline) === projection(replay);
+  const queryStart = replay.bars - replay.lookback;
+  const matchesCausal = replay.matches.every((match) => match.endIndex + MAX_OUTCOME_HORIZON < queryStart);
+  const recurrenceCausal = !replay.recurrence.lastSeen || replay.recurrence.lastSeen < (replay.asOf || asOf);
+  const ok = eligibleFutureRows > 0 && baseline.ok && replay.ok && unchanged && matchesCausal && recurrenceCausal;
+  const reason = ok
+    ? "FIXED_QUERY_UNCHANGED_AFTER_FUTURE_MUTATION"
+    : eligibleFutureRows === 0
+      ? "NO_ELIGIBLE_FUTURE_CLOSED_ROWS"
+      : baseline.reason || replay.reason || "LOOKAHEAD_DIAGNOSTIC_FAILED";
+  return { ok, timeframe, asOf, baselineAsOf: baseline.asOf, mutatedAsOf: replay.asOf, futureRows, eligibleFutureRows, unchanged, recurrenceCausal, matchesCausal, reason };
 }
 
 export interface MultiTimeframeAtlas {
@@ -2966,6 +3216,7 @@ export function assessContribution(
     && qualityKeys.every((key) => Number.isInteger(rawDataQuality[key]) && Number(rawDataQuality[key]) >= 0);
   const snapshotShapeValid = Boolean(
     record(analysis)
+    && (analysis as PatternAnalysis).timeframe === timeframe
     && predictionsShapeValid
     && dataQualityShapeValid
     && record((analysis as PatternAnalysis).walkForward)
@@ -3150,6 +3401,11 @@ export function assessContribution(
     gate = "BLOCKED";
     reason = reliability == null ? "Walk-forward reliability is unavailable." : `Walk-forward reliability ${Math.round(reliability * 100)}% is below the 45% gate.`;
   }
+  // A blocked/stale contribution must not advertise its latent posterior as
+  // a usable direction in diagnostics or UI. Consensus already ignores its
+  // weight, but exposing UP/DOWN alongside BLOCKED is an avoidable semantic
+  // mismatch and can be mistaken for a vote by consumers.
+  const reportedDirection: OutcomeDirection = gate === "PASS" ? direction : "FLAT";
   const weight = gate === "PASS"
     ? round(Math.max(0.2, Math.min(1, analysis.matches.length / 20)) * (0.5 + 0.5 * quality) * (0.5 + 0.5 * (reliabilityFloor ?? reliability ?? 0)) * uncertaintyWeight * sharpnessWeight, 4)
     : 0;
@@ -3160,7 +3416,7 @@ export function assessContribution(
     analysis.freshness = freshness;
     analysis.evidence = { gate, reason, quality, reliability, sampleN, effectiveN: round(effectiveN, 3), uncertaintyWeight, weight };
   }
-  return { timeframe, horizon: CONSENSUS_HORIZON, direction, gate, reason, weight, quality, reliability, freshness: freshness.status, ageMs, sampleN, effectiveN: round(effectiveN, 3), uncertaintyWeight, sharpnessWeight };
+  return { timeframe, horizon: CONSENSUS_HORIZON, direction: reportedDirection, gate, reason, weight, quality, reliability, freshness: freshness.status, ageMs, sampleN, effectiveN: round(effectiveN, 3), uncertaintyWeight, sharpnessWeight };
 }
 
 export function analyzeMultiTimeframe(
@@ -3169,15 +3425,34 @@ export function analyzeMultiTimeframe(
   options: { adaptive?: boolean; now?: string | number | Date; maxAgeBars?: number; maxAgeMs?: number; blockedTimeframes?: PatternTimeframe[] } = {},
 ): MultiTimeframeAtlas {
   const timeframes: PatternTimeframe[] = ["M5", "M15", "M30"];
-  const analyses = Object.fromEntries(timeframes.map((tf) => [tf, analyzeCandlePattern(tapes[tf] || [], tf, symbol, { adaptive: options.adaptive !== false, now: options.now, h1Bars: tapes.H1 })])) as Record<PatternTimeframe, PatternAnalysis>;
-  const h1Raw = tapes.H1 || [];
+  const inputTapes = record(tapes) ? tapes : {};
+  // Treat malformed/missing runtime payloads as empty tapes at the read-only
+  // boundary. A partially written snapshot may contain an object instead of
+  // an array; letting it reach `prepareBars` would throw and abort all MTF
+  // evidence rather than fail closed for that timeframe.
+  const h1Raw = Array.isArray(inputTapes.H1) ? inputTapes.H1 : [];
+  const analyses = Object.fromEntries(timeframes.map((tf) => [tf, analyzeCandlePattern(Array.isArray(inputTapes[tf]) ? inputTapes[tf]! : [], tf, symbol, { adaptive: options.adaptive !== false, now: options.now, h1Bars: h1Raw })])) as Record<PatternTimeframe, PatternAnalysis>;
   const h1Now = requestedTimeMs(options.now) ?? Date.now();
   const h1Prepared = prepareBars(h1Raw, "H1", h1Now).bars;
+  const blockedTimeframes = new Set(options.blockedTimeframes || []);
+  const maxAgeBars = Number.isFinite(options.maxAgeBars) && options.maxAgeBars! > 0 ? options.maxAgeBars! : 3;
+  const freshnessReferenceMs = requestedTimeMs(options.now);
+  const maxAgeMs = Number.isFinite(options.maxAgeMs) && options.maxAgeMs! > 0 ? options.maxAgeMs! : undefined;
+  const usableForSharedContext = (tf: PatternTimeframe) => {
+    if (blockedTimeframes.has(tf) || !analyses[tf].ok) return false;
+    if (freshnessReferenceMs == null) return true;
+    const asOf = analyses[tf].asOf ? timestampMs(analyses[tf].asOf!) : NaN;
+    if (!Number.isFinite(asOf)) return false;
+    const limit = maxAgeMs ?? TIMEFRAME_MS[tf] * Math.max(1, maxAgeBars);
+    return freshnessReferenceMs - (asOf + TIMEFRAME_MS[tf]) <= limit;
+  };
   // The shared H1 summary must be available to every lower timeframe that
   // can contribute. Using the latest lower close here would let a long M30
   // tape expose H1 bars that the shorter M5 query could not have observed.
+  // Ignore explicitly blocked partial tapes: they cannot vote and must not
+  // drag the common context boundary backwards for otherwise eligible frames.
   // Individual analyses still retain their own tighter H1 boundary.
-  const lowerAsOfCandidates = timeframes.map((tf) => {
+  const lowerAsOfCandidates = timeframes.filter(usableForSharedContext).map((tf) => {
     const asOf = analyses[tf].asOf;
     return asOf ? timestampMs(asOf) + TIMEFRAME_MS[tf] : Number.NEGATIVE_INFINITY;
   }).filter(Number.isFinite);
@@ -3193,8 +3468,7 @@ export function analyzeMultiTimeframe(
   const votes = { UP: 0, DOWN: 0, FLAT: 0 };
   const contributing: PatternTimeframe[] = [];
   const referenceMs = requestedTimeMs(options.now);
-  const blockedTimeframes = new Set(options.blockedTimeframes || []);
-  const contributions = timeframes.map((tf) => assessContribution(analyses[tf], tf, referenceMs, options.maxAgeBars ?? 3, options.maxAgeMs, blockedTimeframes.has(tf)));
+  const contributions = timeframes.map((tf) => assessContribution(analyses[tf], tf, referenceMs, maxAgeBars, options.maxAgeMs, blockedTimeframes.has(tf)));
   for (const contribution of contributions) {
     if (contribution.gate !== "PASS") continue;
     const p = analyses[contribution.timeframe].predictions.find((candidate) => candidate.horizon === CONSENSUS_HORIZON)!;
@@ -3263,27 +3537,12 @@ export function analyzeMultiTimeframe(
       ? `No verified timeframe evidence passed the gate: ${blocked.map((item) => `${item.timeframe} ${item.reason}`).join("; ")}`
       : "No verified timeframe evidence is available; consensus remains FLAT.";
   return {
-    symbol, asOf: (() => { const values = timeframes.map((tf) => analyses[tf].asOf).filter((value): value is string => Boolean(value)).sort(); return values.length ? values[values.length - 1] : null; })(),
+    // Consensus combines all passed timeframe tapes.  Use the oldest
+    // contributing close as the shared as-of boundary; reporting the newest
+    // tape would imply that slower frames were observed through that later
+    // timestamp when they were not.
+    symbol, asOf: (() => { const values = contributing.map((tf) => analyses[tf].asOf).filter((value): value is string => Boolean(value)).sort(); return values.length ? values[0] : null; })(),
     generatedAt: new Date().toISOString(), h1Context, timeframes: analyses,
     consensus: { horizon: CONSENSUS_HORIZON, direction: consensusDirection, strength: round(strength, 3), conflict, contributing, note, contributions, gate, authority: "SHADOW_ONLY", decision: "NO_DECISION" },
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

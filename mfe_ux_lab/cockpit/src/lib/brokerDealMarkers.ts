@@ -1,5 +1,5 @@
 import type { OhlcBar } from "../adapters/loadOhlcReplayChart.ts";
-import type { CChartLine } from "../components/CockpitChart.tsx";
+import type { CChartLine } from "../components/chartPrimitives.tsx";
 export interface BrokerPosition {
   symbol: string;
   side: "BUY" | "SELL";
@@ -76,13 +76,16 @@ export function brokerDealMarkers(
   minutes: number,
 ): BrokerChartMarker[] {
   if (!(minutes > 0) || !bars.length) return [];
+  // Avoid parsing the entire retained tape when this chart has no matching
+  // broker evidence. This is the common path for the focused research chart.
+  const relevantDeals = deals.filter(
+    (d) => d.symbol === symbol && Number.isFinite(d.price) && d.price > 0,
+  );
+  if (!relevantDeals.length) return [];
   const times = bars.map((b) =>
     Date.parse(/(?:Z|[+-]\d\d:\d\d)$/.test(b.t) ? b.t : b.t + "Z"),
   );
-  return deals
-    .filter(
-      (d) => d.symbol === symbol && Number.isFinite(d.price) && d.price > 0,
-    )
+  return relevantDeals
     .flatMap((deal) => {
       let lo = 0,
         hi = times.length - 1,

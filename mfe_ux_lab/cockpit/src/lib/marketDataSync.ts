@@ -3,14 +3,27 @@
 // bridge and merge them into the tape. Persisted to localStorage so the extension survives reload.
 // FAIL-CLOSED: if MT5 is not connected, nothing is fetched and NO bar is fabricated. DEMO-only · read-only.
 import type { OhlcBar } from "../adapters/loadOhlcReplayChart.ts";
-import { mt5History, liveSymbol, isOffline } from "./mt5DemoAdapter.ts";
+import { mt5History, liveSymbol, isOffline, MT5_HISTORY_CONTRACT_VERSION, type Mt5History } from "./mt5DemoAdapter.ts";
+import { terminalCacheScope } from "./mt5Connection.ts";
 
 const TF_MIN: Record<string, number> = { M1: 1, M5: 5, M15: 15, M30: 30, H1: 60, H4: 240, D1: 1440, W1: 10080 };
-const lsKey = (sym: string, tf: string) => `mfe_live_ext_${sym}_${tf}`;
+// Persisted extensions are bound to the exact broker instrument as well as
+// the cockpit symbol.  A user may map XAUUSD to a broker alias (for example
+// GOLD.i#); omitting that alias lets a later override reuse bars fetched for
+// the previous instrument under the same account namespace.
+const lsKey = (sym: string, tf: string) => `mfe_live_ext_${encodeURIComponent(terminalCacheScope())}_${encodeURIComponent(sym)}_${encodeURIComponent(liveSymbol(sym))}_${tf}`;
 const MAX_EXT = 6000;   // cap the live extension per tf → bounded localStorage (auto-poll can't grow it forever)
 
-// normalize a bar timestamp to "YYYY-MM-DDTHH:MM:SS" (strip Z, unify separator) for ordering/dedup.
-export const normT = (t: string): string => (t || "").replace("Z", "").replace(" ", "T").slice(0, 19);
+// Normalize a bar timestamp to a UTC key; offset-bearing timestamps must merge by instant.
+export const normT = (t: string): string => {
+  const raw = String(t || "").trim();
+  // Internal keys intentionally omit a timezone and are already UTC. Parsing
+  // them as local time would shift the boundary on non-UTC runtimes.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(raw)) return raw;
+  const parsed = Date.parse(raw);
+  if (Number.isFinite(parsed)) return new Date(parsed).toISOString().slice(0, 19);
+  return raw.replace("Z", "").replace(" ", "T").slice(0, 19);
+};
 
 // union + dedup by timestamp (b overrides a on collision) + chronological + re-index.
 export function mergeBars(a: OhlcBar[], b: OhlcBar[]): OhlcBar[] {
@@ -19,6 +32,38 @@ export function mergeBars(a: OhlcBar[], b: OhlcBar[]): OhlcBar[] {
   for (const x of b) m.set(normT(x.t), { ...x, t: normT(x.t) });
   const out = [...m.values()].sort((x, y) => (normT(x.t) < normT(y.t) ? -1 : normT(x.t) > normT(y.t) ? 1 : 0));
   return out.map((bar, i) => ({ ...bar, i }));
+}
+
+function trustedBackfillRows(result: Mt5History, expectedSymbol: string, tf: string, fromMs: number, toMs: number): OhlcBar[] | null {
+  // Range responses are durable input to the local extension. Require the
+  // bridge to attest both requested identities; a stale M15/XAUUSD response
+  // must never be accepted into an M5 tape merely because its timestamps land
+  // on the five-minute grid.
+  if (!result.ok || result.symbol !== expectedSymbol || result.timeframe !== tf
+    || result.source !== "MT5_HISTORY" || result.contract_version !== MT5_HISTORY_CONTRACT_VERSION
+    || result.closed_bar_provenance !== "MT5_CLOSED_BARS" || result.forming_bar_included !== false
+    || result.timestamp_basis !== "UTC" || (result.authority != null && result.authority !== "SHADOW_ONLY")
+    || (result.decision != null && result.decision !== "NO_DECISION")
+    // A positive live-apply marker is an explicit authority escalation.  The
+    // bridge may omit this legacy field, but it must never be allowed to
+    // override the closed, shadow-only contract when present.
+    || (result.live_apply_allowed != null && result.live_apply_allowed !== false) || result.read_only === false
+    || !Array.isArray(result.bars) || !result.bars.length) return null;
+  const step = (TF_MIN[tf] || 0) * 60_000;
+  if (!step) return null;
+  const rows: OhlcBar[] = [];
+  const seen = new Set<string>();
+  for (const row of result.bars) {
+    const stamp = Date.parse(row?.t || "");
+    if (!Number.isFinite(stamp) || stamp < fromMs || stamp > toMs || stamp + step > Date.now() + 1_000
+      || stamp % step !== 0 || ![row.o, row.h, row.l, row.c].every((value) => typeof value === "number" && Number.isFinite(value))
+      || row.h < Math.max(row.o, row.c, row.l) || row.l > Math.min(row.o, row.c, row.h)) return null;
+    const key = new Date(stamp).toISOString().slice(0, 19);
+    if (seen.has(key)) return null;
+    seen.add(key);
+    rows.push({ ...row, t: key });
+  }
+  return rows.sort((a, b) => a.t.localeCompare(b.t)).map((bar, i) => ({ ...bar, i }));
 }
 
 export function getLiveExt(sym: string, tf: string): OhlcBar[] {
@@ -48,9 +93,22 @@ export function detectGap(lastBarT: string | null, tf: string): GapInfo | null {
 export interface BackfillResult { ok: boolean; tf: string; added: number; totalExt: number; firstNew?: string; lastNew?: string; reason?: string }
 // Pull [lastBarT → now] from MT5 for ONE tf, merge into the persisted extension. Fail-closed.
 export async function backfillFromMt5(sym: string, tf: string, lastBarT: string): Promise<BackfillResult> {
-  const r = await mt5History(liveSymbol(sym), tf, normT(lastBarT), new Date().toISOString().slice(0, 19));
+  // Capture the account scope before the request. A reconnect can replace the
+  // localStorage namespace while the bridge is in flight; persisting that
+  // response under the new scope would mix bars from two terminals.
+  const namespace = terminalCacheScope();
+  if (namespace === "detached") return { ok: false, tf, added: 0, totalExt: getLiveExt(sym, tf).length, reason: "HISTORY_ACCOUNT_CHANGED" };
+  const from = `${normT(lastBarT)}Z`;
+  const to = `${new Date().toISOString().slice(0, 19)}Z`;
+  const requestedSymbol = liveSymbol(sym);
+  const r = await mt5History(requestedSymbol, tf, from, to);
+  if (terminalCacheScope() !== namespace) return { ok: false, tf, added: 0, totalExt: getLiveExt(sym, tf).length, reason: "HISTORY_ACCOUNT_CHANGED" };
+  if (liveSymbol(sym) !== requestedSymbol) return { ok: false, tf, added: 0, totalExt: getLiveExt(sym, tf).length, reason: "HISTORY_PROVENANCE_MISMATCH" };
   if (isOffline(r) || !(r as { ok?: boolean }).ok) return { ok: false, tf, added: 0, totalExt: getLiveExt(sym, tf).length, reason: isOffline(r) ? "SERVER_OFFLINE" : ((r as { reason?: string }).reason || "BROKER_NOT_CONNECTED") };
-  const raw = ((r as { bars?: OhlcBar[] }).bars || []).filter((b) => normT(b.t) > normT(lastBarT));
+  const trusted = trustedBackfillRows(r as Mt5History, requestedSymbol, tf, Date.parse(from), Date.parse(to));
+  if (!trusted) return { ok: false, tf, added: 0, totalExt: getLiveExt(sym, tf).length, reason: "HISTORY_PROVENANCE_MISMATCH" };
+  // The range is inclusive at the left boundary so broker corrections replace local rows.
+  const raw = trusted.filter((b) => normT(b.t) >= normT(lastBarT));
   let ext = mergeBars(getLiveExt(sym, tf), raw);                      // dedup by timestamp (idempotent — repeat-safe)
   if (ext.length > MAX_EXT) ext = ext.slice(-MAX_EXT).map((b, i) => ({ ...b, i }));   // cap → quota-safe
   saveLiveExt(sym, tf, ext);

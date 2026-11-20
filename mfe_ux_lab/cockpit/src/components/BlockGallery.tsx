@@ -12,6 +12,7 @@ import { BlockViz, GROUP_COLOR } from "./BlockViz.tsx";
 import { BlockPlayground } from "./BlockPlayground.tsx";
 import { baseSeriesFrom, computeBlockSeries, defaultParams } from "../lib/blocks/blockDemo.ts";
 import { BlockGroupsExplainer } from "./BlockGroupsExplainer.tsx";
+import { getActiveSymbol, SYMBOL_CHANGED_EVENT } from "../lib/activeSymbolStore.ts";
 
 const GLABEL: Record<L1Group, string> = {
   SOURCE: "Source", CANDLE_ANATOMY: "Candle anatomy", ROLLING_WINDOW: "Rolling window", NORMALIZE: "Normalization",
@@ -22,10 +23,23 @@ const inpBtn: React.CSSProperties = { background: "var(--mfe-s3)", border: "1px 
 
 export function BlockGallery({ onClose }: { onClose: () => void }) {
   const [bars, setBars] = useState<OhlcBar[]>([]);
+  const [barsState, setBarsState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState("");
   const [showExplain, setShowExplain] = useState(false);
-  useEffect(() => { let live = true; loadSimOhlc("M15", false).then((d) => { if (live && d?.bars?.length) setBars(d.bars.slice(-120)); }); return () => { live = false; }; }, []);
+  const [symbol, setSymbol] = useState(getActiveSymbol);
+  useEffect(() => { const sync = () => setSymbol(getActiveSymbol()); window.addEventListener(SYMBOL_CHANGED_EVENT, sync); return () => window.removeEventListener(SYMBOL_CHANGED_EVENT, sync); }, []);
+  useEffect(() => {
+    let live = true;
+    setBarsState("loading");
+    loadSimOhlc("M15", false, symbol).then((d) => {
+      if (!live) return;
+      const next = d?.bars?.slice(-120) || [];
+      setBars(next);
+      setBarsState(next.length ? "ready" : "unavailable");
+    }).catch(() => { if (live) { setBars([]); setBarsState("unavailable"); } });
+    return () => { live = false; };
+  }, [symbol]);
 
   const base = useMemo(() => baseSeriesFrom(bars), [bars]);
   const demos = useMemo(() => { const o: Record<string, number[] | null> = {}; if (!bars.length) return o; for (const b of BLOCKS) o[b.blockId] = computeBlockSeries(b, bars, base, defaultParams(b)); return o; }, [bars, base]);
@@ -34,11 +48,12 @@ export function BlockGallery({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#070b11", zIndex: 130, display: "flex", flexDirection: "column", padding: 12, boxSizing: "border-box" }}>
       <div className="pc-h" style={{ color: "#9fd0ff", borderColor: "#1f5b8c", display: "flex", alignItems: "center", gap: 10 }}>
-        <Glyph name="books" size={14} /> Block library · evaluated previews {BLOCKS.length} block <span className="mut">on {bars.length || "…"} completed historical M15 bars</span>
+        <Glyph name="books" size={14} /> Block library · evaluated previews {BLOCKS.length} blocks <span className="mut">{barsState === "loading" ? `Loading ${symbol} M15 closed bars…` : barsState === "ready" ? `${bars.length} ${symbol} M15 closed bars · local replay snapshot` : `No ${symbol} M15 closed-bar snapshot available`}</span>
         <button onClick={() => setShowExplain((s) => !s)} style={{ marginLeft: "auto", background: showExplain ? TK.cyan : "var(--mfe-s3)", border: "1px solid " + TK.cyan, color: showExplain ? "#06101a" : TK.cyan, borderRadius: 6, padding: "4px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}><Glyph name="book" size={12} /> Group reference</button>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={"Find a block…"} style={{ background: "var(--mfe-s3)", border: "1px solid var(--mfe-border)", color: "var(--mfe-text)", borderRadius: 6, padding: "4px 9px", fontSize: 12, width: 200 }} />
         <button onClick={onClose} style={{ background: "var(--mfe-s3)", border: "1px solid var(--mfe-border)", color: "var(--mfe-text)", borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}><Glyph name="x" size={11} /> Close</button>
       </div>
+      {barsState === "unavailable" && <div role="status" aria-live="polite" style={{ margin: "8px 0", padding: "8px 10px", border: "1px solid #6b4a28", borderRadius: 6, color: TK.orange, background: "#17130c", fontSize: 11 }}>No historical {symbol} M15 bars are available for this preview. Load a local replay snapshot or connect a verified data source; block visuals remain unavailable.</div>}
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
         {showExplain && <BlockGroupsExplainer onClose={() => setShowExplain(false)} />}
         {L1_GROUPS.map((g) => {

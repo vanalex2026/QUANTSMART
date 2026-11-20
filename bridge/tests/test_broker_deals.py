@@ -2,9 +2,14 @@ import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
-from bridge.broker_deals import read_demo_deals
-from bridge.mt5_bridge import TerminalService, ConnectInput
-from test_demo_execution import DemoSDK
+try:
+    from bridge.broker_deals import read_demo_deals
+    from bridge.mt5_bridge import TerminalService, ConnectInput
+    from test_demo_execution import DemoSDK
+except ModuleNotFoundError as error:
+    if error.name not in {"fastapi", "pydantic", "starlette", "httpx"}:
+        raise
+    raise unittest.SkipTest(f"optional bridge dependency unavailable: {error.name}")
 
 
 class BrokerDealTests(unittest.TestCase):

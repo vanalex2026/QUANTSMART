@@ -6,7 +6,7 @@ import {anchorLevel,atrOf} from "./blocks/l6Eval.ts";
 // prediction and NOT an order — advisory · zone-only. Previously the L6 modules were inert labels; now placing
 // one actually draws its region on the Microscope chart.
 import type { OhlcBar } from "../adapters/loadOhlcReplayChart.ts";
-import type { CChartZone } from "../components/CockpitChart.tsx";
+import type { CChartZone } from "../components/chartPrimitives.tsx";
 import { valueAreaOf } from "./valueAreaProxy.ts";
 
 const ZONE_IDS = ["observation_zone", "confirmation_zone", "risk_zone", "invalidation_zone", "avoid_zone", "dynamic_zone", "value_area_zone"] as const;

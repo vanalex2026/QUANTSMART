@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const artifact = JSON.parse(readFileSync(new URL("../artifacts/real-xauusd-m5-pdf-signal-verification.json", import.meta.url), "utf8"));
+assert.equal(artifact.schema, "quantsmart.real-xauusd-m5-pdf-signal-verification/1");
+assert.equal(artifact.symbol, "XAUUSD");
+assert.equal(artifact.timeframe, "M5");
+assert.equal(artifact.closed_bar_provenance, "MT5_CLOSED_BARS");
+assert.equal(artifact.forming_bar_included, false);
+assert.equal(typeof artifact.server_timezone, "string");
+assert.ok(artifact.server_timezone.length > 0);
+assert.equal(artifact.timestamp_basis, "UTC");
+assert.equal(artifact.read_only, true);
+assert.equal(artifact.authority, "SHADOW_ONLY / NO_DECISION / live_apply_allowed=false");
+assert.equal(artifact.decision, "NO_DECISION");
+assert.equal(artifact.live_apply_allowed, false);
+assert.equal(artifact.valid_closed_utc, true);
+assert.equal(artifact.strictly_ordered, true);
+assert.equal(artifact.concept_count, 23);
+assert.equal(artifact.observation_count, 23);
+assert.ok(artifact.selected_index >= 95);
+assert.equal(artifact.deterministic_repeat, true);
+assert.equal(artifact.future_row_invariant, true);
+assert.equal(artifact.authority, "SHADOW_ONLY / NO_DECISION / live_apply_allowed=false");
+assert.equal(artifact.live_apply_allowed, false);
+assert.equal(artifact.outcomes, "WITHHELD");
+assert.equal(artifact.pdf_ohlc_translation, false);
+assert.equal(artifact.historical_census.denominator_equation, "evaluated = DETECTED + ABSTAIN");
+assert.equal(artifact.historical_census.row_accounting_equation, "bars = warmupRows + evaluatedRows + skippedRows + terminalRowsWithoutH1");
+assert.equal(artifact.historical_census.warmup_rows, 8);
+assert.equal(artifact.historical_census.terminal_rows_without_h1, 1);
+assert.deepEqual(artifact.historical_census.authority, { focused_chart: "SHADOW_ONLY", decision: "NO_DECISION", live_apply_allowed: false });
+assert.equal(artifact.historical_census.authority_label, "SHADOW_ONLY / NO_DECISION / live_apply_allowed=false");
+assert.equal(Object.keys(artifact.source_note_states).length, 10);
+assert.deepEqual(Object.keys(artifact.directional_cases).sort(), ["DOWN", "NEUTRAL", "UP"]);
+for (const value of Object.values(artifact.directional_cases)) {
+  assert.equal(value.counts.total, 23);
+  assert.equal(value.counts.detected + value.counts.abstain + value.counts.unavailable + value.counts.withheld, 23);
+  assert.equal(value.deterministic_repeat, true);
+  assert.equal(value.future_row_invariant, true);
+  assert.equal(Object.keys(value.states).length, 23);
+}
+assert.equal(Object.keys(artifact.concept_state_matrix).length, 23);
+console.log("REAL XAUUSD PDF SIGNAL VERIFICATION PASS: all 23 concepts were evaluated on a timestamped closed MT5 XAUUSD M5 read with deterministic and future-row checks.");

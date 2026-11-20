@@ -1,8 +1,13 @@
 import unittest, time
 from types import SimpleNamespace
-from bridge.demo_automation import DemoAutomation, AutoStart, AutoAction
-from bridge.mt5_bridge import TerminalService, ConnectInput
-from test_demo_execution import DemoSDK
+try:
+    from bridge.demo_automation import DemoAutomation, AutoStart, AutoAction
+    from bridge.mt5_bridge import TerminalService, ConnectInput
+    from test_demo_execution import DemoSDK
+except ModuleNotFoundError as error:
+    if error.name not in {"fastapi", "pydantic", "starlette", "httpx"}:
+        raise
+    raise unittest.SkipTest(f"optional bridge dependency unavailable: {error.name}")
 
 
 class AutoTests(unittest.TestCase):

@@ -32,7 +32,7 @@ export async function createResearchBackend({ workspaceDirectory = join(root, 'a
   const evidence=createDecisionEvidenceRepository(join(workspaceDirectory,'decision-evidence'));
   const jobs = new Map(); let active = null, totalBytes = 0, closed = false;
   const expires = 15 * 60 * 1000;
-  const view = (job) => ({ id: job.id, status: job.status, error: job.error, engine_hash: engineHash, input_hash: job.key, created_at: job.createdAt, completed_at: job.completedAt, ...authority });
+  const view = (job) => ({ id: job.id, status: job.status, error: job.error, engine_hash: engineHash, input_hash: job.key, created_at: job.createdAt, completed_at: job.completedAt, ...(job.result?.schema ? { result_schema: job.result.schema, result_hash: job.result.result_hash } : {}), ...authority });
   const remove = (job) => { if (job.resultBytes) totalBytes -= job.resultBytes; jobs.delete(job.id); };
   const prune = () => { for (const job of jobs.values()) if (!['queued', 'running'].includes(job.status) && Date.now() - job.createdAt > expires) remove(job); };
   const pump = () => {
@@ -93,7 +93,22 @@ export async function createResearchBackend({ workspaceDirectory = join(root, 'a
         const chunks = []; let size = 0;
         for await (const chunk of req) { size += chunk.length; if (size > 64 * 1024 * 1024) return send(res, 413, { error: 'INPUT_TOO_LARGE' }); chunks.push(chunk); }
         const request = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        if (!['backtest', 'calibration', 'market','diagnostic','csv_import','csv_view','feature_preview','layer_preview'].includes(request.kind)) return send(res, 400, { error: 'INVALID_JOB_KIND' });
+        if (!['backtest', 'calibration', 'market','diagnostic','detector','csv_import','csv_view','feature_preview','layer_preview'].includes(request.kind)) return send(res, 400, { error: 'INVALID_JOB_KIND' });
+        if (request.kind === 'detector') {
+          if (request.analysis !== 'price_action') return send(res, 400, { error: 'INVALID_DETECTOR_OPERATION' });
+          const options = request.options;
+          if (!options || options.symbol !== 'XAUUSD' || options.timeframe !== 'M5' || !Array.isArray(request.bars) || request.bars.length === 0 || request.bars.length > 750000) return send(res, 400, { error: 'INVALID_PRICE_ACTION_REQUEST' });
+          const allowedOptions = new Set(['symbol', 'timeframe', 'roundStep', 'levelTolerance']);
+          if (Object.keys(options).some((key) => !allowedOptions.has(key))) return send(res, 400, { error: 'INVALID_PRICE_ACTION_OPTIONS' });
+          if (options.roundStep !== undefined && (!Number.isFinite(options.roundStep) || options.roundStep <= 0)) return send(res, 400, { error: 'INVALID_PRICE_ACTION_OPTIONS' });
+          if (options.levelTolerance !== undefined && (!Number.isFinite(options.levelTolerance) || options.levelTolerance < 0)) return send(res, 400, { error: 'INVALID_PRICE_ACTION_OPTIONS' });
+          let previous = -Infinity;
+          for (const bar of request.bars) {
+            const instant = typeof bar?.t === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(bar.t) ? Date.parse(bar.t) : NaN;
+            if (!bar || !Number.isFinite(instant) || instant % 300000 !== 0 || bar.closed === false || instant + 300000 > Date.now() + 1000 || ![bar.o, bar.h, bar.l, bar.c].every(Number.isFinite) || bar.h <= bar.l || bar.h < Math.max(bar.o, bar.c, bar.l) || bar.l > Math.min(bar.o, bar.c, bar.h) || instant <= previous) return send(res, 400, { error: 'INVALID_PRICE_ACTION_BARS' });
+            previous = instant;
+          }
+        }
         if(request.kind==='diagnostic'&&!['ablation','funding','beast_roles','attribution','decision_trace'].includes(request.analysis))return send(res,400,{error:'INVALID_ANALYSIS'});
         if ((request.kind === 'backtest'||request.analysis==='decision_trace') && (!request.card || !Array.isArray(request.card.modules))) return send(res, 400, { error: 'CARD_REQUIRED' });
         if (request.kind === 'backtest'||request.analysis==='decision_trace') {
@@ -117,10 +132,10 @@ export async function createResearchBackend({ workspaceDirectory = join(root, 'a
         } else if (request.kind!=='csv_import'&&!request.importId&&(!Array.isArray(request.bars) || request.bars.length > 750000)) return send(res, 400, { error: 'INVALID_BARS' });
         const key = createHash('sha256').update(engineHash + dataVersion + JSON.stringify(request)).digest('hex');
         const existing = [...jobs.values()].find((j) => j.key === key && ['queued','running','done'].includes(j.status));
-        if (existing) {if(!['market','csv_import','csv_view'].includes(existing.kind))trials.request(existing,true);return send(res, 200, view(existing));}
+        if (existing) {if(!['market','csv_import','csv_view','detector'].includes(existing.kind))trials.request(existing,true);return send(res, 200, view(existing));}
         if ([...jobs.values()].filter((j) => ['queued','running'].includes(j.status)).length >= 4) return send(res, 429, { error: 'RESEARCH_QUEUE_FULL' });
         while (jobs.size >= 12) { const victim = [...jobs.values()].find((j) => !['queued','running'].includes(j.status)); if (!victim) break; remove(victim); }
-        const job = { id: randomUUID(), key, status:'queued', request, kind:request.kind, engineHash, createdAt:Date.now() }; if(!['market','csv_import','csv_view'].includes(request.kind))trials.request(job); jobs.set(job.id, job); pump(); return send(res, 202, view(job));
+        const job = { id: randomUUID(), key, status:'queued', request, kind:request.kind, engineHash, createdAt:Date.now() }; if(!['market','csv_import','csv_view','detector'].includes(request.kind))trials.request(job); jobs.set(job.id, job); pump(); return send(res, 202, view(job));
       } catch (error) { return send(res, 400, { error: error.code === 'ENOENT' ? 'DATASET_NOT_FOUND' : 'INVALID_RESEARCH_REQUEST' }); }
     }
     const match = url.pathname.match(/^\/api\/research\/jobs\/([a-f0-9-]+)(\/result)?$/);

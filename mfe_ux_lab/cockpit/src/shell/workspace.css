@@ -1,34 +1,434 @@
-.workspace-shell { padding-top:48px; padding-bottom:24px; background:var(--bg-app); }
-.workspace-header { position:fixed; inset:0 0 auto; z-index:80; height:48px; display:flex; align-items:center; gap:24px; padding:0 20px; background:var(--bg-app); border-bottom:1px solid var(--border-panel); color:var(--text-secondary); }
-.workspace-context { display:flex; align-items:center; gap:12px; flex:none; }
-.workspace-brand { border:0; padding:0; background:none; color:#F8FAFC; font-size:15px; font-weight:700; cursor:pointer; white-space:nowrap; }
-.workspace-brand span { color:var(--accent-sky); margin-right:3px; }.context-divider { color:#475569; }
-.asset-feed-dot { width:6px; height:6px; border-radius:50%; background:#64748B; margin-right:-6px; }.asset-feed-dot.synced { background:var(--status-safe-text); }
-.workspace-context select { appearance:auto; background:transparent; color:#F8FAFC; border:0; font-size:12px; font-weight:600; padding:5px 0; max-width:112px; cursor:pointer; }.workspace-context option { background:var(--bg-panel); }
-.workspace-navigation { display:flex; align-items:stretch; height:100%; flex:1; gap:8px; min-width:0; }.workspace-nav-group { position:relative; display:flex; }
-.workspace-nav-link { height:48px; padding:0 10px; background:none; border:0; border-bottom:2px solid transparent; color:var(--text-secondary); font-size:12px; font-weight:500; white-space:nowrap; cursor:pointer; }
-.workspace-nav-link:hover { color:#F8FAFC; }.workspace-nav-link.is-active { color:#F8FAFC; border-bottom-color:var(--border-active); }.nav-chevron { margin-left:7px; color:#64748B; font-size:10px; }
-.workspace-tools { margin-left:auto; display:flex; align-items:center; gap:16px; flex:none; }
-.command-trigger { display:flex; align-items:center; gap:8px; padding:5px 9px; border:1px solid var(--border-panel); border-radius:4px; color:var(--text-secondary); background:var(--bg-panel); cursor:pointer; font-size:11px; }
-.workspace-header kbd,.command-dialog kbd { font:10px var(--mfe-mono); padding:1px 4px; border:1px solid var(--border-subtle); border-radius:3px; color:var(--text-primary); background:var(--bg-elevated); }
-.workspace-dropdown { position:absolute; top:47px; left:0; min-width:222px; padding:6px; background:var(--bg-panel); border:1px solid var(--border-panel); border-radius:6px; box-shadow:0 14px 34px rgba(0,0,0,.55); z-index:85; }
-.workspace-dropdown button { display:flex; align-items:center; gap:10px; width:100%; border:0; background:none; padding:9px 10px; color:var(--text-primary); text-align:left; font-size:12px; border-radius:4px; cursor:pointer; }.workspace-dropdown button:hover,.workspace-dropdown button.selected { color:#F8FAFC; background:var(--bg-elevated); }
-.workspace-mobile-nav { display:none; position:relative; min-width:0; }.mobile-workspace-trigger { display:flex; gap:8px; align-items:center; background:none; border:0; color:#F8FAFC; font-size:12px; min-width:0; cursor:pointer; }.mobile-workspace-trigger>span:first-of-type { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.mobile-workspace-menu { top:32px; max-height:calc(100dvh - 90px); overflow-y:auto; }.dropdown-group-label { font-size:10px; color:var(--text-secondary); padding:12px 10px 5px; text-transform:uppercase; letter-spacing:.06em; }
-.workspace-subnav { display:flex; align-items:center; gap:18px; height:36px; min-height:36px; padding:0 20px; border-bottom:1px solid var(--border-panel); background:var(--bg-panel); }.workspace-subnav button { border:0; border-bottom:2px solid transparent; background:none; color:var(--text-secondary); height:36px; padding:0 4px; font-size:11.5px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; }.workspace-subnav button:hover { color:#F8FAFC; }.workspace-subnav button.is-active { color:var(--accent-sky); border-bottom-color:var(--border-active); }.workspace-subnav .workspace-help-link { display:flex; align-items:center; gap:6px; margin-left:auto; }
-#cockpit-controls-slot { margin-left:auto; display:flex; align-items:center; gap:10px; min-width:0; }
-.workspace-statusbar { position:fixed; inset:auto 0 0; height:24px; z-index:60; display:flex; align-items:center; gap:20px; padding:0 20px; border-top:1px solid var(--border-panel); background:var(--bg-app); color:var(--text-secondary); font-size:10px; }.workspace-statusbar span span { padding:0 6px; color:#475569; }.workspace-statusbar>button { margin-left:auto; background:none; border:0; color:var(--text-primary); font:inherit; cursor:pointer; }
-.connection-wrap { position:relative; }.connection-status { display:flex; align-items:center; gap:7px; border:0; background:none; padding:7px 0; font-size:11px; color:var(--text-primary); cursor:pointer; white-space:nowrap; }.connection-dot { width:6px; height:6px; background:#64748B; border-radius:50%; flex:none; }.connection-status.synced .connection-dot { background:var(--status-safe-text); }.connection-status.stale .connection-dot { background:var(--status-warn-text); }
-.connection-detail { position:absolute; right:0; top:37px; width:min(300px,80vw); padding:16px; background:var(--bg-panel); color:var(--text-primary); border:1px solid var(--border-panel); border-radius:6px; font-size:12px; line-height:1.6; }.connection-detail p { margin:8px 0; }.connection-detail time { font-size:11px; }.connection-detail button { display:block; background:none; color:var(--accent-sky); border:0; padding:8px 0 0; cursor:pointer; }
-.command-backdrop { position:fixed; inset:0; z-index:200; background:rgba(7,11,20,.72); padding:100px 18px 24px; }.command-dialog { margin:0 auto; max-width:660px; background:var(--bg-panel); border:1px solid var(--border-panel); border-radius:8px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.55); }
-.command-input { display:flex; align-items:center; gap:12px; padding:16px; border-bottom:1px solid var(--border-subtle); color:var(--text-secondary); }.command-input input { flex:1; min-width:0; border:0; background:none; color:#F8FAFC; font-size:14px; outline:none; }.command-input button { border:0; background:none; cursor:pointer; }
-.command-results { max-height:min(440px,60dvh); overflow-y:auto; padding:6px; }.command-result { display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:4px; cursor:pointer; color:var(--text-primary); }.command-result.selected { background:var(--bg-elevated); color:#F8FAFC; }.command-result>span:first-of-type { flex:1; min-width:0; }.command-result strong { font-size:13px; font-weight:500; }.command-result small { display:block; margin-top:4px; font-size:11px; color:var(--text-secondary); }.result-group { font-size:10px; color:var(--text-secondary); white-space:nowrap; }.command-empty { padding:18px; color:var(--text-primary); font-size:13px; }
-.command-footer { display:flex; gap:16px; padding:10px 16px; border-top:1px solid var(--border-subtle); color:var(--text-secondary); font-size:10px; }.command-footer span:last-child { margin-left:auto; }
-@media(max-width:1199px) { .workspace-header { gap:16px; padding:0 14px; }.workspace-navigation { gap:1px; }.workspace-nav-link { padding:0 8px; }.command-trigger>span,.command-trigger>kbd { display:none; }.workspace-tools { gap:12px; } }
-@media(max-width:959px) { .workspace-navigation { display:none; }.workspace-mobile-nav { display:flex; flex:1; }.workspace-header { gap:18px; }.workspace-tools { gap:14px; }.connection-label { display:none; }.connection-status { padding:10px 3px; }.workspace-context { gap:8px; }.workspace-statusbar>span:nth-child(2) { display:none; } }
-@media(max-width:430px) { .workspace-header { padding:0 10px; gap:10px; }.workspace-brand { font-size:13px; }.workspace-context select { max-width:90px; font-size:11px; }.workspace-tools { gap:8px; }.mobile-workspace-trigger { max-width:130px; }.workspace-subnav { padding:0 12px; gap:12px; height:auto; min-height:36px; flex-wrap:wrap; }.workspace-subnav .workspace-help-link { font-size:0; }.workspace-statusbar { padding:0 10px; }.result-group { display:none; }.command-backdrop { padding-top:60px; } }
+/* Global research terminal chrome. Surfaces are intentionally quiet so market
+   plots, evidence cards and numbers carry the visual hierarchy. */
+.workspace-shell {
+  --workspace-rail: 232px;
+  --workspace-canvas: var(--terminal-canvas, #0f131a);
+  --workspace-surface: var(--terminal-surface, #151a22);
+  --workspace-surface-raised: var(--terminal-raised, #1b222c);
+  --workspace-hover: var(--terminal-hover, #232d39);
+  --workspace-line: rgba(161, 176, 196, .16);
+  --workspace-line-strong: rgba(161, 176, 196, .26);
+  --workspace-ink: #e6edf5;
+  --workspace-muted: #8e9aaa;
+  --workspace-accent: var(--terminal-accent, #37b7d6);
+  --workspace-gap: 12px;
+  display: block;
+  min-height: 100dvh;
+  padding: 52px 0 28px var(--workspace-rail);
+  background: var(--workspace-canvas);
+  color: var(--workspace-ink);
+}
+[data-theme="light"] .workspace-shell {
+  --workspace-canvas: #f4f6f8;
+  --workspace-surface: #fff;
+  --workspace-surface-raised: #f8fafc;
+  --workspace-hover: #edf2f6;
+  --workspace-line: rgba(31, 45, 61, .16);
+  --workspace-line-strong: rgba(31, 45, 61, .28);
+  --workspace-ink: #172230;
+  --workspace-muted: #5f7182;
+  --workspace-accent: #087ea4;
+}
 
-.workspace-save-state { color:var(--text-secondary); }.workspace-save-state.error { color:var(--status-danger-text); }.workspace-save-state button { border:0; background:none; color:inherit; font:inherit; cursor:pointer; }.workspace-service-message { margin:10vh auto; max-width:640px; padding:24px; color:var(--text-primary); }.workspace-service-message button { padding:8px 14px; background:var(--bg-elevated); color:#F8FAFC; border:1px solid var(--border-panel); border-radius:4px; }
-/* Fixed chrome remains 48px / 24px; small screens keep status text on one line. */
-.workspace-statusbar { white-space:nowrap; }
-@media(max-width:480px) { .workspace-statusbar { gap:8px; font-size:9px; }.workspace-save-state { max-width:96px; overflow:hidden; text-overflow:ellipsis; flex:none; }.workspace-statusbar>span:nth-child(3) { min-width:0; overflow:hidden; text-overflow:ellipsis; }.workspace-statusbar>button { flex:none; } }
+/* Desktop rail */
+.workspace-sidebar {
+  position: fixed;
+  inset: 0 auto 24px 0;
+  z-index: 90;
+  width: var(--workspace-rail);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px 12px 12px;
+  background: var(--workspace-surface);
+  border-right: 1px solid var(--workspace-line);
+}
+.sidebar-brand {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 1px 8px 13px; border: 0; background: transparent;
+  color: var(--workspace-ink); text-align: left; cursor: pointer;
+}
+.sidebar-brand-mark { color: var(--workspace-accent); font-size: 19px; line-height: 1; }
+.sidebar-brand strong { display: block; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+.sidebar-brand small { display: block; margin-top: 4px; color: var(--workspace-muted); font-size: 10px; letter-spacing: .04em; }
+.sidebar-rule { height: 1px; margin: 0 8px 16px; background: var(--workspace-line); }
+.sidebar-caption { padding: 0 9px 8px; color: var(--workspace-muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.sidebar-workspaces { min-height: 0; overflow-y: auto; padding-right: 2px; scrollbar-width: thin; scrollbar-color: var(--workspace-line-strong) transparent; }
+.sidebar-group { margin: 0 0 14px; }
+.sidebar-group-label { display: flex; align-items: center; gap: 8px; padding: 5px 9px; color: var(--workspace-muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.sidebar-group.is-active .sidebar-group-label { color: var(--workspace-ink); }
+.sidebar-group-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--workspace-line-strong); }
+.sidebar-group.is-active .sidebar-group-dot { background: var(--workspace-accent); box-shadow: 0 0 0 3px rgba(55,183,214,.12); }
+.sidebar-group-items { display: grid; gap: 2px; }
+.sidebar-workspace-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 30px; padding: 6px 9px 6px 16px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--workspace-muted); font-family: inherit; font-size: 11.5px; font-weight: 500; line-height: 1.2; text-align: left; cursor: pointer; transition: color .14s, background .14s, border-color .14s; }
+.sidebar-workspace-link:hover { color: var(--workspace-ink); background: var(--workspace-hover); }
+.sidebar-workspace-link.is-active { color: var(--workspace-ink); background: rgba(55,183,214,.12); border-color: rgba(55,183,214,.35); }
+.sidebar-workspace-link.is-active svg { color: var(--workspace-accent); }
+.sidebar-footer { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 11px 9px 1px; border-top: 1px solid var(--workspace-line); color: var(--workspace-muted); font-size: 10px; }
+.sidebar-mode-dot { width: 6px; height: 6px; border-radius: 50%; background: #a987e8; box-shadow: 0 0 0 3px rgba(169,135,232,.12); }
+.sidebar-footer-hint { margin-left: auto; color: var(--workspace-muted); font-size: 9px; }
+
+/* Header */
+.workspace-header { position: fixed; inset: 0 0 auto var(--workspace-rail); z-index: 80; height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 20px; background: var(--workspace-surface); border-bottom: 1px solid var(--workspace-line); color: var(--workspace-muted); }
+.workspace-header .workspace-brand, .workspace-header .context-divider { display: none; }
+.workspace-context { display: flex; align-items: center; gap: 10px; flex: none; }
+.workspace-brand { border: 0; padding: 0; background: none; color: var(--workspace-ink); font-size: 12px; font-weight: 800; letter-spacing: .08em; cursor: pointer; white-space: nowrap; }
+.workspace-brand span { color: var(--workspace-accent); margin-right: 4px; }
+.context-divider { color: var(--workspace-line-strong); }
+.asset-feed-dot { width: 6px; height: 6px; margin-right: -3px; border-radius: 50%; background: #687585; }
+.asset-feed-dot.synced { background: #35c98b; box-shadow: 0 0 0 3px rgba(53,201,139,.12); }
+.workspace-context select { appearance: none; max-width: 124px; padding: 7px 22px 7px 8px; border: 1px solid var(--workspace-line); border-radius: 4px; background: var(--workspace-surface-raised); color: var(--workspace-ink); font-size: 11px; font-weight: 700; cursor: pointer; }
+.workspace-context option { background: var(--workspace-surface); color: var(--workspace-ink); }
+.workspace-navigation { display: none; }
+.workspace-nav-group { position: relative; display: flex; }
+.workspace-nav-link { height: 48px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--workspace-muted); font-size: 12px; cursor: pointer; }
+.workspace-nav-link:hover, .workspace-nav-link.is-active { color: var(--workspace-ink); }
+.workspace-nav-link.is-active { border-bottom-color: var(--workspace-accent); }
+.nav-chevron { margin-left: 6px; color: var(--workspace-muted); font-size: 10px; }
+.workspace-mobile-nav { display: none; position: relative; min-width: 0; }
+.mobile-workspace-trigger { display: flex; align-items: center; gap: 8px; max-width: 230px; border: 0; background: transparent; color: var(--workspace-ink); font-size: 12px; cursor: pointer; }
+.mobile-workspace-trigger > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
+.command-trigger { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 5px 9px; border: 1px solid var(--workspace-line); border-radius: 4px; background: var(--workspace-surface-raised); color: var(--workspace-muted); font-size: 11px; cursor: pointer; }
+.command-trigger:hover { color: var(--workspace-ink); border-color: var(--workspace-line-strong); }
+.workspace-header kbd, .command-dialog kbd { padding: 2px 5px; border: 1px solid var(--workspace-line-strong); border-radius: 3px; background: var(--workspace-surface); color: var(--workspace-muted); font: 10px var(--mfe-mono); }
+.theme-toggle { min-height: 30px; padding: 5px 9px; border: 1px solid var(--workspace-line); border-radius: 4px; background: var(--workspace-surface-raised); color: var(--workspace-muted); font-size: 10px; font-weight: 700; cursor: pointer; }
+.theme-toggle:hover { color: var(--workspace-ink); border-color: var(--workspace-accent); }
+.workspace-dropdown { position: absolute; top: 49px; left: 0; z-index: 85; min-width: 222px; padding: 6px; border: 1px solid var(--workspace-line-strong); border-radius: 6px; background: var(--workspace-surface); box-shadow: 0 18px 48px rgba(0,0,0,.38); }
+.workspace-dropdown button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--workspace-muted); text-align: left; font-size: 12px; cursor: pointer; }
+.workspace-dropdown button:hover, .workspace-dropdown button.selected { background: var(--workspace-hover); color: var(--workspace-ink); }
+.dropdown-group-label { padding: 12px 10px 5px; color: var(--workspace-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.mobile-workspace-menu { top: 34px; max-height: calc(100dvh - 90px); overflow-y: auto; }
+
+/* Secondary context bar and content frame */
+.workspace-subnav { display: flex; align-items: center; gap: 20px; min-height: 38px; padding: 0 20px; border-bottom: 1px solid var(--workspace-line); background: var(--workspace-surface); }
+.workspace-subnav button { display: inline-flex; align-items: center; height: 38px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--workspace-muted); font-size: 11px; font-weight: 600; cursor: pointer; }
+.workspace-subnav button:hover { color: var(--workspace-ink); }
+.workspace-subnav button.is-active { color: var(--workspace-accent); border-bottom-color: var(--workspace-accent); }
+.workspace-subnav .workspace-help-link { gap: 6px; margin-left: auto; }
+#cockpit-controls-slot { display: flex; align-items: center; gap: 10px; min-width: 0; margin-left: auto; }
+.workspace-shell .main-wide { min-width: 0; }
+.workspace-statusbar { position: fixed; inset: auto 0 0 var(--workspace-rail); z-index: 60; display: flex; align-items: center; gap: 16px; height: 24px; padding: 0 20px; overflow: hidden; border-top: 1px solid var(--workspace-line); background: var(--workspace-surface); color: var(--workspace-muted); font-size: 9px; white-space: nowrap; }
+.workspace-statusbar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.workspace-statusbar span span { padding: 0 5px; color: var(--workspace-line-strong); }
+.workspace-statusbar > button { flex: none; margin-left: auto; border: 0; background: transparent; color: var(--workspace-ink); font: inherit; cursor: pointer; }
+
+/* The canonical home is a chart surface, not a dashboard of unrelated tools. */
+.workspace-shell[data-focus-surface="m5-chart"] { --workspace-rail: 0px; padding-bottom: 12px; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-sidebar,
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-subnav,
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-statusbar { display: none; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-navigation { display: none; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-mobile-nav,
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-brand,
+.workspace-shell[data-focus-surface="m5-chart"] .context-divider { display: none; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-header { left: 0; max-width: 100vw; box-sizing: border-box; }
+/* The canonical home has one task: inspect the XAUUSD M5 chart. Keep the
+   workspace switcher out of the focused header; other routes retain Ctrl+K. */
+.workspace-shell[data-focus-surface="m5-chart"] .command-trigger { display: none; }
+/* Theme selection belongs to the wider workspace shell. Removing it here
+   keeps the focused header limited to chart identity and feed state. */
+.workspace-shell[data-focus-surface="m5-chart"] .theme-toggle { display: none; }
+.workspace-shell[data-focus-surface="m5-chart"] .locale-toggle { display: inline-flex; align-items: center; justify-content: center; min-width: 68px; min-height: 30px; padding-inline: 8px; font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
+/* Keep the focused XAUUSD M5 shell continuous with the scoped chart skin.
+   Other workspaces retain the graphite terminal chrome above; the chart-first
+   home has no sidebar or navigation that needs the blue terminal accent. */
+.workspace-shell[data-focus-surface="m5-chart"] {
+  --workspace-canvas: #050505;
+  --workspace-surface: #0b0b0b;
+  --workspace-surface-raised: #151515;
+  --workspace-hover: #1d1d1d;
+  --workspace-line: rgba(255, 255, 255, .14);
+  --workspace-line-strong: rgba(255, 255, 255, .22);
+  --workspace-ink: #f5f5f5;
+  --workspace-muted: #9b9b9b;
+  --workspace-accent: #f5f5f5;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-header {
+  background: #0b0b0b;
+  border-bottom-color: rgba(255, 255, 255, .14);
+}
+/* The focused surface needs a compact chart chrome. Keep only the language
+   switch and a small connection affordance in the shell header. */
+.workspace-shell[data-focus-surface="m5-chart"] {
+  --focused-header-height: 36px;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-header {
+  height: 36px;
+  min-height: 36px;
+  padding-inline: 10px;
+  gap: 6px;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-context {
+  display: none;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools {
+  width: 100%;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .connection-status {
+  width: 24px;
+  min-height: 24px;
+  justify-content: center;
+  padding: 0;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .connection-status > span:not(.connection-dot) {
+  display: none;
+}
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .locale-toggle {
+  min-width: 44px;
+  min-height: 24px;
+  padding-inline: 7px;
+  font-size: 10px;
+}
+/* The shell and chart already expose the fixed XAUUSD M5 identity. Keep the
+   focused control row for feed/research state and chart actions instead of
+   repeating that identity in a badge. */
+.workspace-shell[data-focus-surface="m5-chart"] .ms-focused [data-focused-timeframe="true"] { display: none; }
+.workspace-shell[data-focus-surface="m5-chart"] .ms-focused .ms-chart { min-height: calc(100dvh - 112px); height: calc(100dvh - 112px); }
+
+/* Connection popover */
+.connection-wrap { position: relative; }
+.connection-status { display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 5px 0; border: 0; background: transparent; color: var(--workspace-muted); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.connection-status:hover { color: var(--workspace-ink); }
+.connection-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: #687585; }
+.connection-status.synced .connection-dot { background: #35c98b; box-shadow: 0 0 0 3px rgba(53,201,139,.12); }
+.connection-status.stale .connection-dot { background: #e7a83b; }
+.connection-detail { position: absolute; top: 36px; right: 0; width: min(300px, 80vw); padding: 14px; border: 1px solid var(--workspace-line-strong); border-radius: 6px; background: var(--workspace-surface); color: var(--workspace-ink); box-shadow: 0 18px 48px rgba(0,0,0,.38); font-size: 11px; line-height: 1.6; }
+.connection-detail p { margin: 8px 0; }.connection-detail time { font-size: 10px; }.connection-detail button { display: block; padding: 8px 0 0; border: 0; background: none; color: var(--workspace-accent); cursor: pointer; }
+
+/* Command palette */
+.command-backdrop { position: fixed; inset: 0; z-index: 200; padding: 96px 18px 24px; background: rgba(5, 8, 12, .72); }
+.command-dialog { max-width: 660px; margin: 0 auto; overflow: hidden; border: 1px solid var(--workspace-line-strong); border-radius: 7px; background: var(--workspace-surface); box-shadow: 0 24px 72px rgba(0,0,0,.5); }
+.command-input { display: flex; align-items: center; gap: 12px; padding: 15px; border-bottom: 1px solid var(--workspace-line); color: var(--workspace-muted); }
+.command-input input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--workspace-ink); font-size: 14px; }
+.command-input button { border: 0; background: transparent; cursor: pointer; }
+.command-results { max-height: min(440px, 60dvh); overflow-y: auto; padding: 6px; }
+.command-result { display: flex; align-items: center; gap: 12px; padding: 10px 11px; border-radius: 4px; color: var(--workspace-muted); cursor: pointer; }
+.command-result.selected { background: var(--workspace-hover); color: var(--workspace-ink); }
+.command-result > span:first-of-type { flex: 1; min-width: 0; }
+.command-result strong { font-size: 12px; font-weight: 600; }
+.command-result small { display: block; margin-top: 4px; color: var(--workspace-muted); font-size: 10px; }
+.result-group { color: var(--workspace-muted); font-size: 9px; white-space: nowrap; }
+.command-empty { padding: 18px; color: var(--workspace-muted); font-size: 12px; }
+.command-footer { display: flex; gap: 16px; padding: 9px 15px; border-top: 1px solid var(--workspace-line); color: var(--workspace-muted); font-size: 9px; }
+.command-footer span:last-child { margin-left: auto; }
+
+.workspace-save-state { color: var(--workspace-muted); }
+.workspace-save-state.error { color: var(--status-danger-text); }
+.workspace-save-state button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.workspace-service-message { max-width: 640px; margin: 10vh auto; padding: 24px; color: var(--workspace-ink); }
+.workspace-service-message button { padding: 8px 14px; border: 1px solid var(--workspace-line-strong); border-radius: 4px; background: var(--workspace-surface-raised); color: var(--workspace-ink); }
+.workspace-service-shell { min-height: 100dvh; display: grid; place-items: start center; padding: clamp(48px, 12vh, 120px) 20px 48px; background: var(--workspace-canvas, #131722); color: var(--workspace-ink, #d1d4dc); }
+.workspace-error-card { width: min(100%, 660px); margin: 0; padding: clamp(24px, 5vw, 42px); border: 1px solid var(--workspace-line-strong, #363b48); border-radius: 6px; background: var(--workspace-surface, #1e222d); box-shadow: 0 22px 70px rgba(0, 0, 0, .32); }
+.workspace-error-eyebrow { display: flex; align-items: center; gap: 8px; color: #ff8585; font: 700 10px/1.2 var(--mfe-mono, ui-monospace, monospace); letter-spacing: .14em; }
+.workspace-error-dot { width: 7px; height: 7px; border-radius: 50%; background: #ef5350; box-shadow: 0 0 0 4px rgba(239, 83, 80, .14); }
+.workspace-error-mode { margin-left: auto; color: var(--workspace-muted, #8a8f98); letter-spacing: .08em; }
+.workspace-error-card h1 { margin: 18px 0 10px; color: var(--workspace-ink, #d1d4dc); font-size: clamp(24px, 4vw, 34px); line-height: 1.08; }
+.workspace-error-card p { max-width: 58ch; margin: 8px 0; color: var(--workspace-ink, #d1d4dc); line-height: 1.6; }
+.workspace-error-copy { color: var(--workspace-muted, #8a8f98) !important; }
+.workspace-error-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.workspace-error-actions button { min-height: 36px; padding: 8px 14px; border-color: var(--workspace-accent, #2962ff); background: var(--workspace-accent, #2962ff); color: #fff; font-weight: 700; cursor: pointer; }
+.workspace-error-actions .workspace-error-secondary { border-color: var(--workspace-line-strong, #363b48); background: var(--workspace-surface-raised, #262b38); color: var(--workspace-ink, #d1d4dc); }
+.workspace-error-details { margin-top: 26px; border-top: 1px solid var(--workspace-line, #2a2e39); padding-top: 14px; color: var(--workspace-muted, #8a8f98); font-size: 11px; }
+.workspace-error-details summary { cursor: pointer; color: var(--workspace-muted, #8a8f98); }
+.workspace-error-details dl { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px 12px; margin: 14px 0 0; }
+.workspace-error-details dt { color: var(--workspace-muted, #8a8f98); font: 10px var(--mfe-mono, ui-monospace, monospace); text-transform: uppercase; }
+.workspace-error-details dd { min-width: 0; margin: 0; color: var(--workspace-ink, #d1d4dc); overflow-wrap: anywhere; }
+.workspace-error-details code { font: 11px/1.5 var(--mfe-mono, ui-monospace, monospace); }
+[data-theme="light"] .workspace-error-eyebrow { color: #b3261e; }
+[data-theme="light"] .workspace-error-dot { background: #d93025; box-shadow: 0 0 0 4px rgba(217, 48, 37, .12); }
+
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 2px; }
+@media (max-width: 1080px) {
+  .workspace-shell { --workspace-rail: 0px; }
+  .workspace-sidebar { display: none; }
+  .workspace-header, .workspace-statusbar { left: 0; }
+  .workspace-header .workspace-brand, .workspace-header .context-divider { display: inline; }
+  .workspace-navigation { display: none; }
+  .workspace-mobile-nav { display: flex; flex: 1; }
+  .workspace-header { gap: 14px; padding-inline: 14px; }
+  .workspace-tools { gap: 8px; }
+  .connection-label { display: none; }
+  .workspace-statusbar > span:nth-child(2) { display: none; }
+}
+@media (max-width: 640px) {
+  .workspace-shell { padding-top: 48px; padding-bottom: 26px; }
+  .workspace-header { height: 48px; gap: 9px; padding-inline: 10px; }
+  .workspace-header .workspace-brand { font-size: 11px; }
+  .workspace-context { gap: 7px; }
+  .workspace-context select { max-width: 92px; font-size: 10px; }
+  /* Keep the theme switch available on phones; search shortcuts can collapse
+     to the icon while appearance remains a first-class workspace control. */
+  .command-trigger > span, .command-trigger > kbd { display: none; }
+  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .workspace-subnav { gap: 14px; min-height: 36px; padding-inline: 12px; overflow-x: auto; }
+  .workspace-subnav button { height: 36px; white-space: nowrap; }
+  .workspace-subnav .workspace-help-link { font-size: 0; }
+  .workspace-statusbar { gap: 8px; padding-inline: 10px; font-size: 8px; }
+  .workspace-statusbar > button { display: none; }
+  .command-backdrop { padding: 60px 10px 16px; }
+  .command-footer { gap: 8px; }
+  .command-footer span:last-child { display: none; }
+  .result-group { display: none; }
+}
+@media (max-width: 360px) {
+  .workspace-brand { font-size: 0 !important; }
+  .workspace-brand > span { font-size: 15px; }
+  .workspace-context select { max-width: 76px; }
+  .mobile-workspace-trigger { max-width: 120px; }
+}
+
+/* Trading terminal chrome: quiet graphite surfaces and market-standard
+   accents keep the shell visually calm while chart evidence leads. */
+.workspace-shell {
+  --workspace-canvas: #131722;
+  --workspace-surface: #1e222d;
+  --workspace-surface-raised: #262b38;
+  --workspace-hover: #2a2f3c;
+  --workspace-line: #2a2e39;
+  --workspace-line-strong: #363b48;
+  --workspace-ink: #d1d4dc;
+  --workspace-muted: #8a8f98;
+  --workspace-accent: #2962ff;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+[data-theme="light"] .workspace-shell {
+  --workspace-canvas: #f5f6f8;
+  --workspace-surface: #ffffff;
+  --workspace-surface-raised: #f0f2f5;
+  --workspace-hover: #e9edf2;
+  --workspace-line: #dfe3ea;
+  --workspace-line-strong: #c9ced8;
+  --workspace-ink: #20232d;
+  --workspace-muted: #6b7280;
+  --workspace-accent: #2962ff;
+}
+.sidebar-workspace-link.is-active { background: rgba(41,98,255,.12); border-color: rgba(41,98,255,.42); }
+.sidebar-mode-dot { background: #f7b955; box-shadow: 0 0 0 3px rgba(247,185,85,.12); }
+
+/* Final terminal spacing pass. Keep the rail and top bar quiet so the active
+   instrument and its chart evidence remain the visual anchor. */
+.workspace-shell {
+  --workspace-rail: 220px;
+  --workspace-gap: 16px;
+  letter-spacing: .005em;
+}
+.workspace-sidebar { padding-inline: 10px; }
+.sidebar-brand { padding-inline: 10px; }
+.sidebar-caption { padding-inline: 10px; }
+.sidebar-group { margin-bottom: 12px; }
+.sidebar-group-label { padding-inline: 10px; font-family: var(--mfe-mono, ui-monospace, monospace); font-size: 9px; }
+.sidebar-workspace-link { min-height: 32px; border-radius: 3px; font-size: 11px; }
+.workspace-header { height: 54px; padding-inline: 18px; }
+.workspace-shell { padding-top: 54px; }
+.workspace-context select { min-height: 30px; border-radius: 3px; font-family: var(--mfe-mono, ui-monospace, monospace); letter-spacing: .03em; }
+.workspace-tools { gap: 8px; }
+.command-trigger, .theme-toggle { min-height: 30px; border-radius: 3px; }
+.workspace-statusbar { height: 22px; padding-inline: 18px; font-family: var(--mfe-mono, ui-monospace, monospace); }
+@media (max-width: 1080px) {
+  .workspace-shell { padding-top: 54px; }
+  .workspace-header { height: 54px; }
+}
+@media (max-width: 640px) {
+  .workspace-shell { padding-top: 48px; }
+  .workspace-header { height: 48px; }
+}
+
+/* The terminal rail is intentionally removed at tablet widths. This rule is
+   kept last so the desktop spacing pass cannot reintroduce an empty gutter. */
+@media (max-width: 1080px) {
+  .workspace-shell { --workspace-rail: 0px; }
+  .workspace-sidebar { display: none; }
+  .workspace-header, .workspace-statusbar { left: 0; }
+}
+
+/* Shell pass: make the workspace frame feel like a research terminal rather
+   than a generic admin dashboard. The active page owns the visual weight. */
+.workspace-sidebar {
+  background: linear-gradient(180deg, #171a22 0%, #13161d 100%);
+  border-right-color: #2a2e39;
+}
+.sidebar-brand {
+  padding-top: 3px;
+}
+.sidebar-brand-mark {
+  color: #8eaaff;
+}
+.sidebar-caption,
+.sidebar-group-label {
+  letter-spacing: .14em;
+}
+.sidebar-workspace-link {
+  min-height: 34px;
+  border-radius: 2px;
+}
+.sidebar-workspace-link.is-active {
+  position: relative;
+  background: rgba(41, 98, 255, .14);
+  border-color: rgba(41, 98, 255, .42);
+}
+.sidebar-workspace-link.is-active::before {
+  content: "";
+  position: absolute;
+  inset: 4px auto 4px 0;
+  width: 2px;
+  background: #2962ff;
+}
+.workspace-header {
+  background: rgba(30, 34, 45, .96);
+  border-bottom-color: #2a2e39;
+  backdrop-filter: blur(16px);
+}
+.workspace-context select,
+.command-trigger,
+.theme-toggle {
+  border-radius: 2px;
+}
+.workspace-context select:hover,
+.command-trigger:hover,
+.theme-toggle:hover {
+  border-color: #4b5262;
+}
+.workspace-statusbar {
+  background: #171a22;
+  border-top-color: #2a2e39;
+}
+[data-theme="light"] .workspace-sidebar {
+  background: #fbfcfe;
+  border-right-color: #dfe3ea;
+}
+[data-theme="light"] .workspace-header {
+  background: rgba(255, 255, 255, .94);
+  border-bottom-color: #dfe3ea;
+}
+[data-theme="light"] .workspace-statusbar {
+  background: #f8fafc;
+  border-top-color: #dfe3ea;
+}
+.workspace-orientation { display:flex; align-items:center; gap:12px; margin:0 0 14px; font-size:11px; color:#9daabd; }
+.workspace-orientation>span { flex:1; }
+.workspace-orientation button { display:flex; align-items:center; gap:5px; background:none; color:#9cb1c9; padding:0; border:0; font-size:11px; cursor:pointer; }
+.workspace-orientation details>summary { cursor:pointer; list-style:none; }
+.workspace-orientation details p { position:absolute; right:22px; max-width:380px; padding:14px; z-index:25; background:#142030; border:1px solid #304053; color:#c4d1e0; font-size:12px; line-height:1.7; border-radius:4px; }
+@media(max-width:600px) { .workspace-orientation details p { right:12px; max-width:calc(100vw - 42px); } }
+
+/* Dense bilingual/live receipts can consume the flexible plot track on a
+   phone. Keep the focused realtime chart inspectable while allowing the
+   surrounding evidence stack to continue below the viewport. */
+@media(max-width:430px) {
+  .workspace-shell[data-focus-surface="m5-chart"] .mfe-market-chart.microchart-tv .micro-research-status,
+  .workspace-shell[data-focus-surface="m5-chart"] .mfe-market-chart.microchart-tv .micro-research-provenance {
+    flex:0 0 auto;
+    overflow-x:hidden;
+    overflow-y:auto;
+    scrollbar-width:thin;
+  }
+  .workspace-shell[data-focus-surface="m5-chart"] .mfe-market-chart.microchart-tv .micro-research-status { max-height:56px; }
+  .workspace-shell[data-focus-surface="m5-chart"] .mfe-market-chart.microchart-tv .micro-research-provenance { max-height:72px; }
+  .workspace-shell[data-focus-surface="m5-chart"] .mfe-market-chart.microchart-tv .mfe-chart-plot {
+    flex:1 0 200px !important;
+    min-height:200px !important;
+  }
+}

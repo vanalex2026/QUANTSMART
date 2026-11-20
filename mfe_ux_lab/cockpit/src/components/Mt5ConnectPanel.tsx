@@ -11,7 +11,10 @@ import { mt5Account, isOffline, type Mt5DemoAccountInfo } from "../lib/mt5DemoAd
 import { loadSimOhlc, clearSimCache } from "../adapters/loadSimOhlc.ts";
 import { detectGap, backfillFromMt5, clearLiveExt, autoSyncOnce, type GapInfo, type BackfillResult } from "../lib/marketDataSync.ts";
 
-const TFS = ["M5", "M15", "M30", "H1", "H4", "D1"];   // M1 excluded (a multi-month M1 backfill blows localStorage quota)
+// QUANTSMART's broker tape is intentionally limited to the four research
+// frames requested for XAUUSD. M1/H4/D1 add storage and noise without helping
+// the Pattern Atlas decision surface.
+const TFS = ["M5", "M15", "M30", "H1"];
 
 export function Mt5ConnectPanel() {
   const terminalGeneration = useTerminalGeneration();
@@ -25,7 +28,7 @@ export function Mt5ConnectPanel() {
   const [autoMsg, setAutoMsg] = useState<string | null>(null);
 
   async function refreshGap() {
-    const d = await loadSimOhlc("H1");
+    const d = await loadSimOhlc("H1", true, getActiveSymbol());
     const lt = d?.bars?.length ? d.bars[d.bars.length - 1].t : null;
     setLastT(lt); setGap(detectGap(lt, "H1"));
   }
@@ -54,7 +57,7 @@ export function Mt5ConnectPanel() {
     setBusy(true); const out: BackfillResult[] = [];
     try {
       for (const tf of TFS) {
-        const d = await loadSimOhlc(tf);
+        const d = await loadSimOhlc(tf, true, getActiveSymbol());
         const lt = d?.bars?.length ? d.bars[d.bars.length - 1].t : null;
         if (!lt) { out.push({ ok: false, tf, added: 0, totalExt: 0, reason: "NO_TAPE" }); continue; }
         out.push(await backfillFromMt5(getActiveSymbol(), tf, lt));
@@ -72,7 +75,7 @@ export function Mt5ConnectPanel() {
   useEffect(() => {
     if (!auto || !acct?.connected) return;
     let live = true;
-    const loadLastBar = async (tf: string) => { const d = await loadSimOhlc(tf); return d?.bars?.length ? d.bars[d.bars.length - 1].t : null; };
+    const loadLastBar = async (tf: string) => { const d = await loadSimOhlc(tf, true, getActiveSymbol()); return d?.bars?.length ? d.bars[d.bars.length - 1].t : null; };
     const tick = async () => {
       const r = await autoSyncOnce(getActiveSymbol(), TFS, loadLastBar);
       if (!live || !r.ran) return;

@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "start": "node tools/productServer.mjs",
     "test:product": "node tools/test-research-backend.mjs && node tools/test-workspace-product.mjs && node tools/test-card-lifecycle.mjs",
+    "test:pattern-atlas": "node tools/test-candle-pattern-atlas.mjs",
     "audit:language": "node tools/audit-product-source.mjs --strict",
     "mfe": "node ../../scripts/bootstrap.mjs"
   },

@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const root = new URL("../", import.meta.url);
+const map = JSON.parse(readFileSync(new URL("docs/price_action_knowledge_map.json", root), "utf8"));
+const audit = JSON.parse(readFileSync(new URL("artifacts/wave6-pdf-signal-ui-audit.json", root), "utf8"));
+const panel = readFileSync(new URL("mfe_ux_lab/cockpit/src/components/PriceActionKnowledgePanel.tsx", root), "utf8");
+const book = readFileSync(new URL("mfe_ux_lab/cockpit/src/components/PriceActionBookIndex.tsx", root), "utf8");
+const css = readFileSync(new URL("mfe_ux_lab/cockpit/src/components/price-action-knowledge-panel.css", root), "utf8");
+const inspector = readFileSync(new URL("mfe_ux_lab/cockpit/src/components/ChartPatternInspector.tsx", root), "utf8");
+const translation = readFileSync(new URL("mfe_ux_lab/cockpit/src/components/PdfSignalTranslationEvidence.tsx", root), "utf8");
+
+assert.equal(audit.result, "PASS");
+assert.equal(audit.authority, "SHADOW_ONLY / NO_DECISION / live_apply_allowed=false");
+assert.deepEqual(audit.concepts, { total: 23, geometry_proxy: 13, source_notes: 10 });
+assert.equal(map.concepts.length, 23);
+assert.equal(map.concepts.filter(c => c.implementation === "GEOMETRY_PROXY").length, 13);
+assert.equal(map.concepts.filter(c => c.implementation === "SOURCE_NOTES").length, 10);
+assert.match(panel, /geometryProxyCount/);
+assert.match(panel, /sourceNotesCount/);
+assert.match(panel, /signalCoverage/);
+assert.match(panel, /implementationLabel\(concept\.implementation, locale\)/);
+assert.match(panel, /PriceActionBookIndex map=\{map\} locale=\{locale\}/);
+assert.match(book, /locale = "en"/);
+assert.ok(book.includes("Source interpretation only") && book.includes("decodeURIComponent"));
+assert.match(css, /p-akp-signal-coverage/);
+assert.match(css, /p-akp-concept-scope-source/);
+assert.match(panel, /sourceNotesStatus\(locale\)/);
+assert.match(inspector, /PdfSignalTranslationEvidence/);
+assert.match(translation, /translatePdfSignalConcepts/);
+assert.ok(book.includes("SOURCE_NOTES") && book.includes("SHADOW_ONLY / NO_DECISION / live_apply_allowed=false"));
+assert.doesNotMatch(panel + book, /order_send|place order|execute\s*\(/i);
+console.log("WAVE6 PDF SIGNAL UI AUDIT PASS: 23 XAUUSD M5 concepts expose bilingual implementation scope while preserving source-only authority.");

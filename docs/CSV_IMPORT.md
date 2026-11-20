@@ -2,7 +2,7 @@
 
 ## Import a file
 
-1. Open **Microscope -> Chart & Replay** or the first-run panel on Cockpit.
+1. Open **Microscope -> Chart & Replay**.
 2. Expand **Import or reopen historical CSV**.
 3. Choose your file and its canonical symbol, such as `XAUUSD` or `BTCUSDT`.
 4. Confirm the source timeframe or choose detection. Detection estimates observed

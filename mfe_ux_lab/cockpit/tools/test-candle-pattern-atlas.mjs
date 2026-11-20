@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 
 async function directModule(entry) {
@@ -141,7 +142,10 @@ function sparseNamedFixture() {
   return bars;
 }
 
-const { analyzeCandlePattern, analyzeMultiTimeframe, assessContribution, patternSessionAt, chronologicalIndependentCount, causalCandidateEffectiveN, decomposeNovelty } = await directModule("src/lib/candlePatternAtlas.ts");
+const { analyzeCandlePattern, analyzeMultiTimeframe, assessContribution, patternSessionAt, chronologicalIndependentCount, causalCandidateEffectiveN, decomposeNovelty, noLookaheadDiagnostic } = await directModule("src/lib/candlePatternAtlas.ts");
+const atlasSource = readFileSync("src/lib/candlePatternAtlas.ts", "utf8");
+assert.match(atlasSource, /function probabilityTopClassIndex\([\s\S]*?return 2;/, "calibration must abstain on near-tied top classes");
+assert.match(atlasSource, /bins\[binIndex\]\.correct \+= probabilityTopClassIndex\(values\) === actualIndex/, "reliability bins must score the same abstaining class rule as live forecasts");
 // Independent support is a chronological packing claim, not a distance-rank
 // claim. It must be invariant to candidate order and monotonic for subsets.
 const packedTape = [40, 5, 25, 10, 55, 25, 90];
@@ -192,6 +196,16 @@ const bars = fixture();
 const result = analyzeCandlePattern(bars, "M5");
 assert.equal(result.ok, true, "fixture should be analyzable");
 assert.ok(["UP", "DOWN", "FLAT"].includes(result.consensus.direction));
+// Repeated windows can produce identical distances.  The rank cap must keep
+// newer causal endpoints first so stale tied analogues cannot crowd out
+// current regime evidence.
+for (let index = 1; index < result.matches.length; index++) {
+  const previous = result.matches[index - 1];
+  const current = result.matches[index];
+  if (previous.distance === current.distance) {
+    assert.ok(previous.endIndex > current.endIndex, "equal-distance analogues must prefer newer endpoints");
+  }
+}
 if (result.consensus.strength < 0.05) assert.equal(result.consensus.direction, "FLAT", "near-tied single-timeframe posteriors must remain FLAT");
 if (result.consensus.direction === "FLAT") assert.equal(result.consensus.strength, 0, "FLAT local forecasts must not expose directional strength");
 // Novelty is one causal support claim at the persisted snapshot boundary:
@@ -412,6 +426,18 @@ const withFormingRow = analyzeCandlePattern([...bars, formingRow], "M5");
 assert.deepEqual(withFormingRow.analogueConcentration, concentration, "forming/future rows must not change causal concentration support");
 assert.deepEqual(withFormingRow.novelty.decomposition, noveltyDecomposition, "forming/future rows must not change causal novelty decomposition");
 assert.deepEqual(withFormingRow.walkForward.probabilistic.drift, result.walkForward.probabilistic.drift, "forming/future rows must not change chronological drift evidence");
+// The saved/live chronology probe must exercise at least one valid closed
+// future candle. A forming-only tail is not evidence that a fixed query was
+// insulated from a later live update.
+const lookahead = noLookaheadDiagnostic(bars, "M5", "XAUUSD", { evaluationIndex: 300 });
+assert.equal(lookahead.ok, true, "future closed tail should pass the no-lookahead diagnostic");
+assert.ok(lookahead.futureRows >= lookahead.eligibleFutureRows && lookahead.futureRows > 0);
+assert.ok(lookahead.eligibleFutureRows > 0, "diagnostic must report eligible future closed rows");
+const formingOnlyTail = [...bars.slice(0, 301), { ...bars[301], closed: false }];
+const formingOnlyDiagnostic = noLookaheadDiagnostic(formingOnlyTail, "M5", "XAUUSD", { evaluationIndex: 300 });
+assert.equal(formingOnlyDiagnostic.ok, false);
+assert.equal(formingOnlyDiagnostic.eligibleFutureRows, 0);
+assert.equal(formingOnlyDiagnostic.reason, "NO_ELIGIBLE_FUTURE_CLOSED_ROWS");
 assert.ok(result.predictions.some((prediction) => (prediction.calibration?.overlapFactor ?? 1) < 1), "repeating analogue windows should expose clustered-support adjustment");
 // Hierarchical context backoff may select a different causal subset, so the
 // exact median spacing is data-dependent; the bounded factor above is the
@@ -443,11 +469,19 @@ assert.ok(result.matches.every((match) => typeof match.contextWeight === "number
 assert.ok(result.matches.filter((match) => match.sameRegime && match.sameSession).every((match) => match.contextWeight === 1));
 assert.ok(result.matches.some((match) => !match.sameRegime || !match.sameSession), "fixture should include a context-mismatched analogue");
 assert.ok(result.matches.filter((match) => !match.sameRegime || !match.sameSession).every((match) => match.contextWeight < 1));
+assert.ok(result.matches.every((match) => Number.isFinite(match.recencyWeight) && match.recencyWeight >= 0.55 && match.recencyWeight <= 1), "causal analogue recency weights must be bounded");
+for (let index = 1; index < result.matches.length; index++) {
+  const previous = result.matches[index - 1];
+  const current = result.matches[index];
+  // A more recent endpoint cannot receive less recency support solely because
+  // it is newer; distance/context ranking remains independent of this audit.
+  if (previous.time < current.time) assert.ok(previous.recencyWeight <= current.recencyWeight, "recency weight must decay with endpoint age");
+}
 const predictionRows = result.matches.filter((match) => match.sameSession);
 const predictionMatches = predictionRows.length >= 8 ? predictionRows : result.matches;
 const weightedCounts = { UP: 1, DOWN: 1, FLAT: 1 };
 for (const match of predictionMatches) {
-  const weight = Math.max(0.05, match.similarity ** 2) * match.contextWeight;
+  const weight = Math.max(0.05, match.similarity ** 2) * match.contextWeight * match.recencyWeight;
   weightedCounts[match.outcome[0]] += weight;
 }
 const weightedTotal = weightedCounts.UP + weightedCounts.DOWN + weightedCounts.FLAT;
@@ -465,7 +499,7 @@ const sessionRows = result.matches.filter((match) => match.session === result.se
 const sessionCounts = { UP: 0, DOWN: 0, FLAT: 0 };
 let sessionTotalWeight = 0;
 for (const match of sessionRows) {
-  const weight = Math.max(0.05, match.similarity ** 2) * match.contextWeight;
+  const weight = Math.max(0.05, match.similarity ** 2) * match.contextWeight * match.recencyWeight;
   sessionCounts[match.outcome[0]] += weight;
   sessionTotalWeight += weight;
 }
@@ -693,6 +727,12 @@ for (const contribution of multi.consensus.contributions) {
 }
 const multiRepeat = analyzeMultiTimeframe(multiTapes, "XAUUSD");
 assert.deepEqual({ ...multiRepeat, generatedAt: "" }, { ...multi, generatedAt: "" }, "multi-timeframe evidence must be deterministic apart from generation time");
+// A shared consensus as-of must be bounded by the oldest contributing tape;
+// publishing the newest timeframe timestamp would overstate chronology for
+// shorter/less-complete frames.
+const staggered = analyzeMultiTimeframe({ M5: fixture(380, 5), M15: fixture(360, 15), M30: fixture(340, 30) }, "XAUUSD");
+const contributingAsOf = staggered.consensus.contributing.map((tf) => staggered.timeframes[tf].asOf).filter(Boolean).sort();
+assert.equal(staggered.asOf, contributingAsOf[0], "multi-timeframe as-of must use the oldest contributing timeframe close");
 
 const large = fixture(1800);
 const started = performance.now();

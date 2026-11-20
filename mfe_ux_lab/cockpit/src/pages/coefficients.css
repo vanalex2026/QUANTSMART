@@ -199,6 +199,21 @@
 
 .coef-table-wrap {
   overflow: auto;
+  max-width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-panel) var(--bg-panel);
+  overscroll-behavior: contain;
+}
+.coef-table-wrap:focus-visible {
+  outline: 2px solid var(--border-active);
+  outline-offset: 3px;
+}
+.coef-table-caption {
+  padding: 0 12px 8px;
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  line-height: 1.4;
+  text-align: left;
 }
 .coef-table {
   width: 100%;
@@ -225,8 +240,12 @@
   font-family: var(--mfe-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
-  color: #F8FAFC;
+  color: var(--text-primary);
   font-weight: 600;
+}
+.coef-table .coef-name {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 .coef-table .coef-muted {
   color: var(--text-secondary);
@@ -353,7 +372,7 @@
   height: 100%;
   border: 0;
   background: none;
-  color: #F8FAFC;
+  color: var(--text-primary);
   text-align: right;
   padding: 0 36px 0 8px;
   font-family: var(--mfe-mono) !important;

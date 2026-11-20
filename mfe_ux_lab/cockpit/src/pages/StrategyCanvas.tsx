@@ -8,6 +8,8 @@ import{DEFINITION_KEYS}from"../lib/portableDefinitions.ts";
 import { lazy, Suspense, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { getActiveSymbol } from "../lib/activeSymbolStore.ts";
 import "./cotrade.css";
+// Strategy Canvas owns the forensic fx toggle chrome; keep it route-local.
+import "../owner.css";
 import { TK } from "../components/ui/Ui.tsx";
 import { Glyph, type GlyphName } from "../components/ui/Glyph.tsx";
 import { CustomModuleBuilder } from "../components/CustomModuleBuilder.tsx";

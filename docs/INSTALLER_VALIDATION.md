@@ -15,9 +15,9 @@ actual local checks from the cross-platform CI configured in the repository.
 - Public runtime tests used a real server, worker, inline synthetic test-only bars
   and workspace readback across restart. Missing history produced DATASET_NOT_FOUND
   without disclosing a local source path.
-- The first-run browser file chooser imported a labeled 130-bar synthetic CSV,
-  selected H1 and opened Microscope with CSV as its source. Existing integrity
-  checks flagged frozen prices. No fixture was installed as market history.
+- The Microscope CSV importer accepted a labeled 130-bar synthetic CSV, selected
+  H1 and opened Microscope with CSV as its source. Existing integrity checks
+  flagged frozen prices. No fixture was installed as market history.
 - 28 isolated Python bridge/Demo tests passed. They use SDK fixtures and do not
   establish actual broker execution. No broker account was attached for this work.
 - The portable ZIP was extracted into a path with spaces and Vietnamese characters.

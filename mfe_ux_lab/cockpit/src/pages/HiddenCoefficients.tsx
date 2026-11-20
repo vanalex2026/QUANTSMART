@@ -122,22 +122,23 @@ export function HiddenCoefficients() {
               <h2>{group}</h2>
               <span className="coef-count">{rows.length}</span>
             </div>
-            <div className="coef-table-wrap">
-              <table className="coef-table">
+            <div className="coef-table-wrap" role="region" tabIndex={0} aria-label={`Scrollable ${group} coefficient inventory`}>
+              <table className="coef-table" aria-label={`${group} coefficient inventory`}>
+                <caption className="coef-table-caption">Read-only coefficient values and their declared source provenance.</caption>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th style={{ textAlign: "right" }}>Value</th>
-                    <th>Type</th>
-                    <th>Used by</th>
-                    <th>Source</th>
-                    <th>Notes</th>
+                    <th scope="col">Name</th>
+                    <th scope="col" style={{ textAlign: "right" }}>Value</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Used by</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((c) => (
                     <tr key={c.name}>
-                      <td style={{ color: "#F8FAFC", fontWeight: 500 }}>{c.name}</td>
+                      <th scope="row" className="coef-name">{c.name}</th>
                       <td className="coef-number">{c.value}</td>
                       <td>
                         <span className={`coef-kind tone-${KIND_META[c.kind].tone}`} title={KIND_META[c.kind].label}>

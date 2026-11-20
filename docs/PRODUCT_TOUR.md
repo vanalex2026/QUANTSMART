@@ -4,6 +4,21 @@ The current home screen focuses on one XAUUSD M5 candle chart. Pan, zoom or use
 the drawing toolbar to inspect price action. **Show context** opens the measured
 pattern census and PDF knowledge lens.
 
+Use **Cursor** to select a saved drawing, `[` / `]` to cycle selections, drag its
+body or endpoint handles to edit it, and Delete/Backspace to remove it. Escape
+cancels an active gesture or clears selection. Drawings remain anchored to closed
+bar UTC identities. The focused home keeps legacy navigation and the command
+palette out of the chart-first surface; its scoped monochrome guard preserves the
+black/white evidence chrome while teal/red candle direction remains explicit.
+
+If a signed-in MT5 terminal is already open, the shell makes a bounded
+read-only Auto-Attach attempt without credentials; explicit detach pauses those
+checks. Closed M5 refreshes use a cache-busting probe and promote only data that
+passes UTC, symbol, closed-bar and read-only provenance checks. Malformed or
+forming responses remain unavailable. Modified keyboard combinations retain
+native browser behavior. The former BeastDeck wrapper is retired while shared
+research services and stored data remain available.
+
 The complete retained price-action history scans in a background worker. While
 **PATTERN HISTORY | SCANNING** is visible, statistics and PDF markers are pending;
 the candle chart, pan/zoom and drawing controls remain available. If the scan
@@ -21,8 +36,9 @@ A selected analogue UTC endpoint survives recomputation and snapshot resume.
 In **Price action knowledge**, **Show details** opens 23 curated concept lenses
 and a 12-chapter book index. Select a chapter to see printed/PDF page ranges,
 reviewed pages and related lenses. Chapter 9 includes the March-August 2012 case
-ranges and source annotation glossary. Coverage is partial: chapter navigation
-does not mean every figure has been reviewed. Ten source-note lenses (including exit management) have no detector
+ranges and source annotation glossary. The indexed chapter interval is fully
+source-reviewed (419/419 pages); review does not establish detector or outcome
+validation. Ten source-note concepts (including exit management) have no detector
 statistics. Thirteen geometry proxies now include regular pattern break, its post-break
 pullback and close-confirmed pattern-break combi; their measured history remains separate from the source notes.
 Marker and inspector references show printed and PDF page numbers side by side.
@@ -224,14 +240,10 @@ a contribution that has actually been measured in a combined strategy.
 
 ![Blocks and modules](screenshots/blocks-modules.jpg)
 
-### 9. Beast
-
-Compose role-based Card ensembles, inspect member lineage and compare simulated
-matchups. The workspace also exposes environment-routing experiments and editable
-starter compositions. A template or compatibility label is a research starting point;
-its members and current definition must match the evidence being reviewed.
-
-![Beast ensemble workspace](screenshots/beast-lab.jpg)
+The former standalone Beast ensemble workspace has been retired. Its old
+`#beast-lab` links now open the focused XAUUSD M5 home chart. Beast composition,
+lineage and role-analysis services remain available to their existing builders
+and stored research data is preserved.
 
 ### 10. Coordinate Lab
 

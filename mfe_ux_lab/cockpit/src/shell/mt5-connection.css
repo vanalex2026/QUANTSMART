@@ -26,4 +26,9 @@
 .mt5-advanced-toggle { display:flex; align-items:center; gap:7px; width:100%; margin-top:20px; padding:12px 0 0; border:0; border-top:1px solid var(--border-subtle); color:var(--text-secondary); background:none; cursor:pointer; text-align:left; font-size:12px; }
 .mt5-secondary { padding:8px 12px; border:1px solid var(--border-panel); border-radius:4px; background:var(--bg-elevated); color:var(--text-primary); font-size:12px; cursor:pointer; }
 .mt5-connect-dialog button:focus-visible,.mt5-input-label input:focus-visible,.mt5-input-label select:focus-visible { outline:2px solid var(--accent-cyan); outline-offset:3px; }
-@media(max-width:430px) { .mt5-input-pair { grid-template-columns:1fr; gap:0; }.mt5-connect-dialog>header,.mt5-dialog-body { padding:14px; }.mt5-auto-attach { font-size:12px; } }
+@media(max-width:430px) {
+  .mt5-input-pair { grid-template-columns:1fr; gap:0; }
+  .mt5-connect-dialog>header,.mt5-dialog-body { padding:14px; }
+  .mt5-auto-attach { min-height:44px; font-size:12px; }
+  .mt5-close,.mt5-secondary,.mt5-advanced-toggle { min-height:44px; }
+}

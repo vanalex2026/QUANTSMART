@@ -12,7 +12,6 @@ export const WORKSPACES: Workspace[] = [
   { id: "strategy-lab", label: "Strategy Lab", group: "studio", icon: "flask", description: "Review saved validation runs, OOS windows and module contributions.", aliases: "validation results", showInSidebar: false },
   { id: "strategy-canvas", label: "Canvas", group: "studio", icon: "window", description: "Assemble, save and validate a research Strategy Card.", aliases: "strategy canvas build create", showInSidebar: false },
   { id: "blocks-modules", label: "Blocks & Modules", group: "studio", icon: "puzzle", description: "Inspect blocks, modules, roles and their mechanisms.", aliases: "blocks modules library", showInSidebar: false },
-  { id: "beast-lab", label: "Beast", group: "studio", icon: "beast", description: "Compose Cards by role and verify their source lineage.", aliases: "card beast ensemble", showInSidebar: false },
   { id: "formula-lab", label: "Coordinate Lab", group: "studio", icon: "ruler", description: "Explore formula curves, density and modeled geometry.", aliases: "quantlab coordinate formula", showInSidebar: false },
   { id: "assets", label: "Assets", group: "analytics", icon: "globe", description: "Inspect dataset availability and configure dated sources.", aliases: "assets symbol data", showInSidebar: false },
   { id: "hidden-coefficients", label: "Hidden Coefficients", group: "system", icon: "digits", description: "Audit configuration coefficients and edit a Shadow profile.", aliases: "coefficients calibration weights", showInSidebar: false },
@@ -29,7 +28,7 @@ export const visibleWorkspaceGroups = (current: string) => {
   return current === "home" ? groups.filter((group) => group.id === "cockpit") : groups;
 };
 /** Legacy hashes stay usable while resolving to the single focused XAUUSD M5 surface. */
-export const LEGACY_ROUTE_ALIASES: Record<string, string> = { "pattern-atlas": "home", "research-atlas": "home", "kidi-events": "home", "entry-danger": "home", "weekly-audit": "home", "strategy-ranking": "home", "analysis": "home", "playbook": "home" };
+export const LEGACY_ROUTE_ALIASES: Record<string, string> = { "pattern-atlas": "home", "research-atlas": "home", "kidi-events": "home", "entry-danger": "home", "weekly-audit": "home", "strategy-ranking": "home", "analysis": "home", "playbook": "home", "beast-lab": "home" };
 export const canonicalPage = (id: string) => LEGACY_ROUTE_ALIASES[id] || id;
 export const workspaceFor = (id: string) => WORKSPACES.find((item) => item.id === canonicalPage(id));
 export const validPage = (id: string) => !!workspaceFor(id);

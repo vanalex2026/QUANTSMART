@@ -1,10 +1,10 @@
 // Real calendar source only. Missing data never starts a fabricated countdown.
 import { useEffect, useState } from "react";
 import { Glyph } from "./ui/Glyph.tsx";
-type Calendar={status:string;source?:string;updated_at?:string;events:{title:string;at_utc:string}[]};
+import { parseEconomicCalendar, type EconomicCalendar } from "../lib/economicCalendar.ts";
 export function PreEventWarning(_props:{cleanliness?:number;name?:string;startSec?:number}){
- const [calendar,setCalendar]=useState<Calendar|null>(null),[now,setNow]=useState(Date.now);
- useEffect(()=>{const c=new AbortController();fetch("/api/research/calendar",{signal:c.signal}).then(r=>r.ok?r.json():null).then(setCalendar).catch(()=>{});return()=>c.abort();},[]);
+ const [calendar,setCalendar]=useState<EconomicCalendar|null>(null),[now,setNow]=useState(Date.now);
+ useEffect(()=>{const c=new AbortController();fetch("/api/research/calendar",{signal:c.signal}).then(r=>r.ok?r.json():null).then(raw=>{if(raw?.status!=="CONFIGURED"){setCalendar(null);return;}try{setCalendar(parseEconomicCalendar(raw));}catch{setCalendar(null);}}).catch(()=>{if(!c.signal.aborted)setCalendar(null);});return()=>c.abort();},[]);
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
  const next=calendar?.events.filter(e=>Date.parse(e.at_utc)>now).sort((a,b)=>Date.parse(a.at_utc)-Date.parse(b.at_utc))[0];
  const seconds=next?Math.max(0,Math.floor((Date.parse(next.at_utc)-now)/1000)):null;

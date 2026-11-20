@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {priceActionReviewCoverage} from '../scripts/price-action-coverage.mjs';
+
+const read=file=>JSON.parse(readFileSync(new URL(file,import.meta.url),'utf8'));
+const map=read('../docs/price_action_knowledge_map.json');
+const index=read('../docs/price_action_page_index.json');
+const extraction=read('../artifacts/price_action_pages_audit.json');
+const receipt=read('../artifacts/chapter9-late-april-source-review-283-292.json');
+const chapter=map.book_index.find(row=>row.number===9);
+const lens=map.source_lenses.find(row=>row.id==='chapter9_late_april_range_edges_and_patience');
+const fixture=map.held_out_source_fixtures.find(row=>row.id==='chapter-9-late-april-review-283-292');
+const reviewed=Array.from({length:10},(_,i)=>283+i);
+assert.ok(Array.from({length:48},(_,i)=>245+i).every(p=>chapter.reviewed_printed_pages.includes(p)));
+assert.deepEqual(lens.pages,reviewed);
+assert.deepEqual(fixture.pages,reviewed);
+assert.equal(lens.implementation,'SOURCE_NOTES');
+assert.equal(fixture.status,'SOURCE_REVIEW_ONLY');
+assert.equal(fixture.data_status,'UNAVAILABLE');
+assert.equal(fixture.outcome_status,'WITHHELD');
+for(const expected of [/p\. 283:.*false bear low.*not a continuation/i,/p\. 284:.*No real entry.*only if one went long anyway/i,/p\. 285:.*overhead resistance.*too little buildup/i,/p\. 286:.*first EMA25 pullback.*adverse 00-level/i,/p\. 287:.*squeeze a bit thin.*double-bar/i,/p\. 288:.*20-pip.*conditional/i,/p\. 289:.*broken falsely.*optional/i,/p\. 290:.*uncomfortably tall.*too early/i,/p\. 291:.*14:30 CET.*news breakout/i,/p\. 292:.*without a dominant party.*uncertain/i])assert.ok(lens.cues.some(cue=>expected.test(cue)),expected.source);
+for(const expected of [/EUR\/USD.*XAUUSD/i,/Figure 9\.34-9\.43 OHLC.*UNAVAILABLE\/WITHHELD/i,/p\. 284.*conditional exit.*qualifying entry/i,/p\. 286.*p\. 289.*not measured probabilities/i,/p\. 288.*p\. 292.*not establish validated XAUUSD targets/i,/p\. 291.*not supply a live economic-calendar/i,/automatic detector rule.*measured success\/failure/i,/SHADOW_ONLY \/ NO_DECISION \/ live_apply_allowed=false/i])assert.ok(lens.abstain.some(cue=>expected.test(cue)),expected.source);
+assert.equal(receipt.source_sha256,map.source.sha256);
+assert.deepEqual(receipt.reviewed_printed_pages,reviewed);
+assert.deepEqual(receipt.newly_curated_printed_pages,reviewed);
+assert.deepEqual(receipt.previously_curated_rechecked_printed_pages,[]);
+assert.deepEqual(receipt.coverage,{curated_pages:329,remaining_pages:90,chapter9_reviewed_pages:48,source_lenses:27,held_out_source_fixtures:27});
+assert.equal(receipt.receipts.length,10);
+for(const p of reviewed){
+  const row=index.pages.find(r=>r.printed_page===p),attest=receipt.receipts.find(r=>r.printed_page===p);
+  assert.equal(row.review_status,'CURATED_NOTES');
+  assert.equal(row.pdf_page,p+10);
+  assert.equal(attest.ocr_sha256,row.ocr_sha256);
+  assert.equal(attest.has_ocr,row.has_ocr);
+  assert.deepEqual(attest.concept_ids,row.concept_ids);
+  assert.match(attest.render_sha256,/^[a-f0-9]{64}$/);
+  assert.match(attest.visual_review,/Full page visually inspected/);
+  assert.equal(createHash('sha256').update(extraction.pages[p+9].text,'utf8').digest('hex'),attest.ocr_sha256);
+  const render=new URL('../'+attest.render_path,import.meta.url);
+  if(existsSync(render))assert.equal(createHash('sha256').update(readFileSync(render)).digest('hex'),attest.render_sha256);
+  assert.ok(row.concept_ids.includes('consecutive_review'));
+}
+for(const id of lens.concept_ids){const concept=map.concepts.find(c=>c.id===id);assert.ok(concept.pages.some(p=>reviewed.includes(p)),`${id} needs a reviewed content anchor`);}
+const coverage=priceActionReviewCoverage(index,extraction,map,9);
+assert.equal(coverage.totals.pages,138);
+assert.ok(coverage.totals.reviewed_pages>=48);
+assert.equal(coverage.totals.reviewed_pages+coverage.totals.remaining_pages,138);
+assert.ok(!coverage.chapters[0].next_review||coverage.chapters[0].next_review.printed_page>292);
+assert.deepEqual(coverage.chapters[0].remaining_without_ocr_printed_pages,chapter.reviewed_printed_pages.includes(382)?[]:[382]);
+assert.ok(priceActionReviewCoverage(index,extraction,map).totals.reviewed_pages>=329);
+console.log('CHAPTER 9 LATE APRIL SOURCE REVIEW PASS: printed283-292 / PDF293-302; range edges, thin sessions and conditional exits remain source-only.');

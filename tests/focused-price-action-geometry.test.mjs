@@ -1,0 +1,17 @@
+﻿import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const app = fileURLToPath(new URL("../mfe_ux_lab/cockpit", import.meta.url));
+const require = createRequire(app + "/package.json");
+const { build } = require("esbuild");
+const bundled = await build({ stdin: { contents: "export * from './src/lib/focusedPriceActionGeometry.ts'", resolveDir: app }, bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent" });
+const api = await import("data:text/javascript;base64," + Buffer.from(bundled.outputFiles[0].text).toString("base64"));
+const evidence = (historyState, freshnessOk, focused = true) => ({ focused, timeframe: "M5", historyState, freshnessOk });
+const marker = (i, direction) => ({ i, direction });
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "UP")], evidence("fallback", false)), undefined, "stale local fallback tape must withhold current geometry");
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "UP")], evidence("ready", false)), undefined, "stale promoted tape must withhold current geometry");
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "UP")], evidence("ready", true)), "UP", "unanimous fresh promoted evidence may expose research geometry");
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "UP"), marker(7, "DOWN")], evidence("ready", true)), undefined, "conflicting directions must abstain");
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "NEUTRAL")], evidence("ready", true)), undefined, "neutral marker sets must abstain");
+assert.equal(api.resolveFocusedPriceActionDirection([marker(7, "DOWN")], evidence("idle", false, false)), "DOWN", "unfocused historical diagnostics retain descriptive directional geometry");
+console.log("FOCUSED PRICE-ACTION GEOMETRY PASS: stale/fallback, unanimous, conflict and neutral gates are explicit.");

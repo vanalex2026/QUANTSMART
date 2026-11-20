@@ -82,27 +82,27 @@ export function StrategyAttributionPanel({
             Full-system reference: {shown.fullSystem.trades} trades,{" "}
             {value(shown.fullSystem.netR)} R.
           </p>
-          <div className="csv-import-preview">
+          <div className="csv-import-preview" role="region" tabIndex={0} aria-label="Scrollable conditional event study evidence">
             <table>
               <caption>
                 Conditional event study, mean net basis points per event
               </caption>
               <thead>
                 <tr>
-                  <th>Hold</th>
-                  <th>A · Real + hold</th>
-                  <th>B · Random + hold</th>
-                  <th>C · Random + exit</th>
-                  <th>D · Real + exit</th>
-                  <th>Entry lift</th>
-                  <th>Exit lift on random</th>
-                  <th>Interaction</th>
+                  <th scope="col">Hold</th>
+                  <th scope="col">A · Real + hold</th>
+                  <th scope="col">B · Random + hold</th>
+                  <th scope="col">C · Random + exit</th>
+                  <th scope="col">D · Real + exit</th>
+                  <th scope="col">Entry lift</th>
+                  <th scope="col">Exit lift on random</th>
+                  <th scope="col">Interaction</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.rows.map((row) => (
                   <tr key={row.horizon}>
-                    <td>{row.horizon} bars</td>
+                    <th scope="row">{row.horizon} bars</th>
                     <td>{value(row.A_realEntriesFixedHold.meanNetBps)}</td>
                     <td>
                       {value(mean(row.controls.map((c) => c.b.meanNetBps!)))}

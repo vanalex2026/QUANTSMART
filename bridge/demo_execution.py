@@ -13,6 +13,11 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+try:
+    from .execution_receipts import normalize_receipt, unavailable_receipt
+except ImportError:
+    # The launcher runs this bridge as a standalone script on Windows.
+    from execution_receipts import normalize_receipt, unavailable_receipt
 
 AUTHORITY = "MANUAL_DEMO_ONLY"
 SCOPE = {"scope": AUTHORITY, "real_execution_allowed": False, "live_apply_allowed": False}
@@ -181,16 +186,24 @@ class DemoExecution:
         with self.lock:
             item = self.requests.get(preview_id)
             if not item:
-                return {"ok": False, "state": "unknown", "reason": "REQUEST_NOT_FOUND", **SCOPE}
-            return item.get("result") or {"ok": True, "state": item["state"], **SCOPE}
+                return unavailable_receipt("REQUEST_NOT_FOUND")
+            payload = item.get("result") or {"ok": True, "state": item["state"], **SCOPE}
+            try:
+                return normalize_receipt(payload)
+            except ValueError:
+                return unavailable_receipt()
 
     def submit(self, body: DemoSubmitInput):
         with self.lock:
             item = self.requests.get(body.preview_id)
             if not item:
-                return {"ok": False, "state": "rejected", "reason": "PREVIEW_EXPIRED", **SCOPE}
+                return normalize_receipt({"ok": False, "state": "rejected", "reason": "PREVIEW_EXPIRED", **SCOPE})
             if item["state"] != "preview":
-                return item.get("result") or {"ok": True, "state": item["state"], **SCOPE}
+                payload = item.get("result") or {"ok": True, "state": item["state"], **SCOPE}
+                try:
+                    return normalize_receipt(payload)
+                except ValueError:
+                    return unavailable_receipt()
             item["state"] = "sending"
         result = None
         try:
@@ -221,7 +234,7 @@ class DemoExecution:
                     raise ValueError("DEMO_ACCOUNT_CHANGED")
                 sent = self.terminal.sdk.order_send(request)
                 if sent is None:
-                    result = {"ok": False, "state": "unknown", "reason": "BROKER_RESULT_UNKNOWN_CHECK_MT5", **SCOPE}
+                    result = unavailable_receipt("BROKER_RESULT_UNKNOWN_CHECK_MT5")
                 else:
                     code = int(sent.retcode)
                     state = "filled" if code == 10009 else "partial" if code == 10010 else "accepted" if code == 10008 else "rejected"
@@ -231,7 +244,11 @@ class DemoExecution:
         except ValueError as error:
             result = {"ok": False, "state": "rejected", "reason": str(error), **SCOPE}
         except Exception:
-            result = {"ok": False, "state": "unknown", "reason": "BROKER_RESULT_UNKNOWN_CHECK_MT5", **SCOPE}
+            result = unavailable_receipt("BROKER_RESULT_UNKNOWN_CHECK_MT5")
+        try:
+            result = normalize_receipt(result)
+        except ValueError:
+            result = unavailable_receipt()
         finally:
             with self.lock:
                 item["result"] = result

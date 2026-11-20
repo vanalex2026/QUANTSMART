@@ -208,22 +208,22 @@ export function CsvImportPanel({
                 <li key={w}>{w}</li>
               ))}
             </ul>
-            <div className="csv-import-preview">
+            <div className="csv-import-preview" role="region" tabIndex={0} aria-label="Scrollable imported row preview">
               <table>
                 <caption>First and last imported rows</caption>
                 <thead>
                   <tr>
-                    <th>UTC time</th>
-                    <th>Open</th>
-                    <th>High</th>
-                    <th>Low</th>
-                    <th>Close</th>
+                    <th scope="col">UTC time</th>
+                    <th scope="col">Open</th>
+                    <th scope="col">High</th>
+                    <th scope="col">Low</th>
+                    <th scope="col">Close</th>
                   </tr>
                 </thead>
                 <tbody>
                   {saved.preview.map((b, i) => (
                     <tr key={i}>
-                      <td>{b.t}</td>
+                      <th scope="row">{b.t}</th>
                       <td>{b.o}</td>
                       <td>{b.h}</td>
                       <td>{b.l}</td>

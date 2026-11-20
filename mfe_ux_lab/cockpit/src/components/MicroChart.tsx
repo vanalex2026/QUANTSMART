@@ -47,6 +47,10 @@ const MICROCHART_TOOL_SHORTCUTS: ReadonlyArray<{ id: Tool; t: string; shortcut: 
   { id: "text", t: "Text label", shortcut: "X" },
   { id: "measure", t: "Measure", shortcut: "M" },
 ];
+const TOOLS_LABELS: Record<Tool, string> = {
+  cursor: "Cursor / drag-pan", trend: "Trend line", hline: "Horizontal line", fib: "Fib retracement",
+  rect: "Rectangle box", brush: "Brush (freehand)", text: "Text label", measure: "Measure",
+};
 // Accessibility contract: Escape Home End PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + - C T H F R B X M
 // aria-keyshortcuts="Escape Home End PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + - C T H F R B X M"
 /** Resolve a drawing-tool letter shortcut without requiring toolbar focus. */
@@ -70,8 +74,8 @@ export function microChartToolbarMove(index: number, key: string, count: number)
  * navigation deterministic and bounded without changing replay/order state. */
 export function microChartHomeViewport(n: number, width: number): [number, number] {
   if (n < 2) return [0, Math.max(1, n - 1)];
-  const boundedWidth = Math.max(1, Math.min(n - 1, Math.trunc(Number.isFinite(width) ? width : n - 1)));
-  return [0, boundedWidth];
+  const boundedWidth = Math.max(2, Math.min(n, Math.trunc(Number.isFinite(width) ? width : n)));
+  return [0, boundedWidth - 1];
 }
 /** Return the latest retained window for the chart End shortcut while
  * preserving the user's current zoom width. Keep a two-bar minimum because
@@ -294,6 +298,27 @@ export interface TradeSeg { entryI: number; entry: number; exitI: number; exit: 
 /** A candle can carry several concept annotations; hover identity must include
  * the concept/time label instead of collapsing every marker at one index. */
 const signalHoverKey = (signal: SignalMarker): string => `${signal.i}:${signal.time}:${signal.conceptId || signal.label}`;
+const localizedMarkerLabel = (label: string, locale: "en" | "vi") => {
+  const match = label.match(/^(HIST CANDLE|CANDLE|PATTERN|PDF PROXY) · (.+)$/);
+  const prefix = match?.[1] || "";
+  const rawName = (match?.[2] || label).trim();
+  const name = rawName.replace(/_/g, " ");
+  const translated: Record<string, string> = {
+    "FALSE HIGH LOW": "Đỉnh giả / đáy giả",
+    BUILDUP: "Tích lũy",
+    THREE_OUTSIDE_UP: "Ba nến đảo chiều tăng",
+    THREE_OUTSIDE_DOWN: "Ba nến đảo chiều giảm",
+    ENGULFING: "Nhấn chìm",
+    PIN_BAR: "Nến pin bar",
+    INSIDE_BAR: "Nến trong",
+  };
+  const readable = locale === "vi" ? translated[rawName.toUpperCase()] || name : name;
+  return prefix ? `${prefix} · ${readable}` : readable;
+};
+const viCopy = (value: string) => decodeURIComponent(value);
+const drawingVisibilityStatus = (locale: "en" | "vi", hidden: boolean) => locale === "vi"
+  ? (hidden ? viCopy("%C4%90%C3%A3%20%E1%BA%A9n%20b%E1%BA%A3n%20v%E1%BA%BD%3B%20ch%C3%BA%20th%C3%ADch%20v%E1%BA%ABn%20%C4%91%C6%B0%E1%BB%A3c%20l%C6%B0u.%20SHADOW_ONLY%3B%20NO_DECISION.") : viCopy("%C4%90%C3%A3%20hi%E1%BB%87n%20b%E1%BA%A3n%20v%E1%BA%BD.%20SHADOW_ONLY%3B%20NO_DECISION."))
+  : (hidden ? "Drawings hidden; annotations remain saved. SHADOW_ONLY; NO_DECISION." : "Drawings shown. SHADOW_ONLY; NO_DECISION.");
 
 /** Keep an annotation caption inside the plot when a marker sits at an edge.
  * A very narrow plot cannot fit a caption without covering the price axis, so
@@ -312,7 +337,7 @@ export function microChartSignalLabelLayout(x: number, left: number, right: numb
   return rightRoom >= leftRoom ? { x: right - 2, anchor: "end" } : { x: left + 2, anchor: "start" };
 }
 
-export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines: suppliedLines = [], symbol, tf, live = false, cursor = null, focusIndex = null, focusTime = null, focusRequestId = 0, viewportRestore = null, drawingsRestore = null, markers = [], signals = [], trades = [], episodes = [], formingEpisode = null, zoneLayout = "recent", brokerDeals = [], brokerSymbol = symbol, onSignalSelect, onViewportChange, onDrawingsChange, researchStatus, researchProvenance, researchPattern, researchPatternSignals = [], researchPatternLabel, locale = "en", focusAnnotation = null, historicalSignal = null, landmarksAtLatestOnly = false }: {
+export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines: suppliedLines = [], symbol, tf, live = false, cursor = null, focusIndex = null, focusTime = null, focusRequestId = 0, viewportRestore = null, drawingsRestore = null, markers = [], signals = [], trades = [], episodes = [], formingEpisode = null, zoneLayout = "recent", brokerDeals = [], brokerSymbol = symbol, onSignalSelect, onViewportChange, onDrawingsChange, researchStatus, researchProvenance, researchPattern, researchPatternSignals = [], researchPatternLabel, locale = "en", focusAnnotation = null, historicalSignal = null, landmarksAtLatestOnly = false, compactChrome = false, startAtLatest = false }: {
   bars: OhlcBar[]; zones?: CChartZone[]; lines?: CChartLine[]; symbol: string; tf: string; live?: boolean;
   cursor?: number | null; /** Optional visual jump target that does not alter replay visibility semantics. */ focusIndex?: number | null; /** Stable UTC identity for retention refreshes. */ focusTime?: string | null; /** Increment for an explicit repeat jump to the same UTC endpoint. */ focusRequestId?: number; viewportRestore?: Partial<MicroChartViewport> & { nonce?: number } | null; drawingsRestore?: { drawings: MicroChartDrawing[]; nonce?: number } | null; markers?: { i: number; price: number; kind: string }[]; signals?: SignalMarker[]; trades?: TradeSeg[];
   episodes?: EpisodeBand[]; formingEpisode?: EpisodeBand | null;   // CH Episode Lens (observer) — coloured leg ribbon below the price plot
@@ -320,6 +345,8 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   brokerDeals?: BrokerDeal[]; brokerSymbol?: string; onSignalSelect?: (signal: SignalMarker) => void; focusAnnotation?: MicroChartFocusAnnotation | null;
   onViewportChange?: (viewport: MicroChartViewport) => void; onDrawingsChange?: (drawings: MicroChartDrawing[]) => void; researchStatus?: string; researchProvenance?: string; /** Current closed-bar pattern explanation; descriptive only. */ researchPattern?: string; /** Current concepts exposed as clickable, read-only chart chips. */ researchPatternSignals?: SignalMarker[]; /** Optional readable chip label carrying the measured H+1 rate. */ researchPatternLabel?: (signal: SignalMarker) => string; locale?: "en" | "vi";
   historicalSignal?: HistoricalPositionSignal | null; landmarksAtLatestOnly?: boolean;
+  compactChrome?: boolean;
+  startAtLatest?: boolean;
 }) {
   const tickFeed = useLiveTickFeed(symbol, tf, live);
   const frame = tickFeed.status === "live" || tickFeed.status === "stale" ? tickFeed.frame : null;
@@ -335,8 +362,13 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   const onWheelNative = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const { start, end, n, PX0, slot, live } = gRef.current; const w = end - start; if (w < 1) return;
+    if (e.shiftKey) {
+      const rawDelta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      const nextStart = Math.max(0, Math.min(n - 1 - w, start + Math.round(rawDelta / Math.max(1, slot))));
+      setViewRef.current([nextStart, nextStart + w]);
+      return;
+    }
     const nw = Math.max(8, Math.min(2500, n - 1, Math.round(w * (e.deltaY < 0 ? 0.82 : 1.22)))); // cap zoom-out so we never render too many candles
-    if (live) { const b = n - 1, a = Math.max(0, b - nw); setViewRef.current([a, b]); return; } // LIVE: keep the current candle pinned to the right edge
     const rect = wrapRef.current!.getBoundingClientRect();
     const center = Math.max(start, Math.min(end, start + Math.floor((e.clientX - rect.left - PX0) / slot)));
     let a = Math.round(center - (center - start) * (nw / w)); if (a < 0) a = 0;
@@ -350,6 +382,72 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   }, [onWheelNative, measureChart]);
 
   const n = bars.length;
+  const chartCopy = locale === "vi" ? {
+    noData: `Không có dữ liệu nến đóng cho ${symbol} ${tf}`,
+    insufficientData: `Cần ít nhất hai nến đóng cho ${symbol} ${tf}`,
+    toolRail: "Công cụ vẽ và chú thích biểu đồ",
+    showDrawings: "Hiện bản vẽ",
+    hideDrawings: "Ẩn bản vẽ",
+    undo: "Hoàn tác bản vẽ",
+    redo: "Làm lại bản vẽ",
+    resetShort: viCopy("%C4%90%E1%BA%B7t%20l%E1%BA%A1i"),
+    barsLabel: viCopy("N%E1%BA%BFn"),
+    legendLabel: viCopy("Gi%C3%A1%20n%E1%BA%BFn%20v%C3%A0%20EMA"),
+    magnetOn: viCopy("nam%20ch%C3%A2m%20b%E1%BA%ADt"),
+    magnetLabel: viCopy("Nam%20ch%C3%A2m%20(b%E1%BA%AFt%20theo%20OHLC)"),
+    lockLabel: viCopy("Kh%C3%B3a%20b%E1%BA%A3n%20v%E1%BA%BD"),
+    clearLabel: viCopy("X%C3%B3a%20b%E1%BA%A3n%20v%E1%BA%BD"),
+    footerHint: viCopy("k%C3%A9o%20%3D%20di%20chuy%E1%BB%83n%20%7C%20cu%E1%BB%99n%20%3D%20ph%C3%B3ng%20to%20%2F%20thu%20nh%E1%BB%8F%20%7C%20ch%E1%BB%8Dn%20c%C3%B4ng%20c%E1%BB%A5%20%C4%91%E1%BB%83%20v%E1%BA%BD%20%7C%20ch%E1%BB%89%20hi%E1%BB%83n%20th%E1%BB%8B%20ch%E1%BA%A9n%20%C4%91o%C3%A1n"),
+    keyboardHelp: viCopy("Ph%C3%ADm%20Escape%20h%E1%BB%A7y%20b%E1%BA%A3n%20v%E1%BA%BD%20%7C%20Delete%20ho%E1%BA%B7c%20Backspace%20x%C3%B3a%20b%E1%BA%A3n%20v%E1%BA%BD%20%7C%20Page%20Up%20v%C3%A0%20Page%20Down%20di%20chuy%E1%BB%83n%20theo%20m%E1%BB%99t%20khung%20%7C%20Ctrl%2FCmd%2BZ%20ho%C3%A0n%20t%C3%A1c%20v%C3%A0%20Ctrl%2FCmd%2BShift%2BZ%20l%C3%A0m%20l%E1%BA%A1i"),
+    sessionLabels: { ASIA: viCopy("Ch%C3%A2u%20%C3%81"), EUROPE: viCopy("Ch%C3%A2u%20%C3%82u"), US: viCopy("Hoa%20K%E1%BB%B3") },
+  } : {
+    noData: `No closed-bar data available for ${symbol} ${tf}`,
+    insufficientData: `Need at least two closed bars for ${symbol} ${tf}`,
+    toolRail: "Chart drawing and annotation tools",
+    showDrawings: "Show drawings",
+    hideDrawings: "Hide drawings",
+    undo: "Undo drawing",
+    redo: "Redo drawing",
+    resetShort: "Reset",
+    barsLabel: "Bars",
+    legendLabel: "Candle and EMA values",
+    magnetOn: "magnet on",
+    magnetLabel: "Magnet (snap to OHLC)",
+    lockLabel: "Lock drawings",
+    clearLabel: "Clear drawings",
+    footerHint: "drag = pan · scroll = zoom · pick a tool to draw · diagnostic only",
+    keyboardHelp: "Keyboard chart controls: Escape cancels an active drawing; Delete or Backspace removes a drawing; [ and ] cycle saved drawings; Home jumps to the earliest retained bars at the current zoom and End jumps to the latest bars; Page Up and Page Down move one full viewport earlier or later; double-click with Cursor resets the viewport; Left and Right move through the closed-bar window; Up and Down or plus and minus zoom; Ctrl/Cmd+Z undoes and Ctrl/Cmd+Shift+Z redoes. Tab reaches shadow annotations.",
+    sessionLabels: { ASIA: "Asia", EUROPE: "Europe", US: "US" },
+  };
+  const hoverCopy = locale === "vi" ? {
+    measuredWick: "Độ dài râu đo được", threshold: "ngưỡng", unusual: "bất thường", below: "dưới ngưỡng",
+    closeLocation: "Vị trí đóng cửa", ofBar: "của nến", notMeasured: "chưa đo", shape: "dạng chuyển động",
+    sourceAssessment: "Đánh giá nguồn", observedAssociation: "liên hệ quan sát được", nearBaseline: "gần mức nền",
+    probability: "Xác suất hướng", baseline: "so với mức nền", lift: "độ lệch", sample: "mẫu",
+    rationale: "Cơ sở đo lường", modelBand: "Dải mô hình công bố", target: "mục tiêu", bars: "nến",
+    calibrated: "đã hiệu chỉnh", defaulted: "mặc định", tolerance: "dung sai", multiTimeframe: "biến động đa khung",
+    contextLesson: "Bối cảnh kiểm chứng ngoài mẫu", heldOut: "kiểm chứng giữ lại", strong: "mạnh", weak: "yếu",
+    nextObservation: "Quan sát tiếp theo", matched: "khớp hướng đo được", missed: "không khớp hướng đo được",
+    neutral: "thiết lập trung tính; kết quả chỉ mang tính mô tả", unresolved: "chưa xác định; đang theo dõi dải đã công bố",
+    tradeWhy: "Vì sao mô phỏng tạo điểm vào này", defaultEma: "Giao cắt EMA mặc định; không có mô-đun Card riêng.",
+    tradeOutcome: "Kết quả giao dịch mô phỏng", modeled: "Mô phỏng theo engine chuẩn và bộ lọc Card đã chọn. Chỉ nghiên cứu.",
+    unavailable: "chưa có dữ liệu", nextClosed: "Nến đóng tiếp theo", outcome: "Kết quả", pending: "đang chờ",
+  } : {
+    measuredWick: "Measured wick", threshold: "threshold", unusual: "unusually long", below: "below threshold",
+    closeLocation: "Close location", ofBar: "of the bar", notMeasured: "not measured", shape: "directional shape",
+    sourceAssessment: "Source assessment", observedAssociation: "observed association", nearBaseline: "near the null baseline",
+    probability: "Directional probability", baseline: "versus baseline", lift: "lift", sample: "n",
+    rationale: "Measured rationale", modelBand: "Declared model band", target: "target", bars: "bars",
+    calibrated: "calibrated", defaulted: "default", tolerance: "tolerance", multiTimeframe: "multi-timeframe volatility",
+    contextLesson: "Context lesson with held-out validation", heldOut: "OOS", strong: "strong", weak: "weak",
+    nextObservation: "Next observation", matched: "matched measured direction", missed: "did not match measured direction",
+    neutral: "setup was neutral; outcome is descriptive only", unresolved: "unresolved; monitoring the declared band",
+    tradeWhy: "Why the strategy produced this simulated entry", defaultEma: "Default EMA crossover; no Card-specific module recorded.",
+    tradeOutcome: "Simulated trade outcome", modeled: "Modeled execution using the canonical engine and selected Card filters. Research only.",
+    unavailable: "unavailable", nextClosed: "Next closed bar", outcome: "Outcome", pending: "pending",
+  };
+  const toolLabel = (id: Tool) => locale === "vi" ? ({ cursor: "Con trỏ / kéo biểu đồ", trend: "Đường xu hướng", hline: "Đường ngang", fib: "Mức Fibonacci", rect: "Hộp chữ nhật", brush: "Bút vẽ tự do", text: "Nhãn văn bản", measure: "Đo lường" }[id]) : TOOLS_LABELS[id];
+  const accessibilityCopy = { sessions: locale === "vi" ? viCopy("Phi%C3%AAn%20UTC%3A%20Ch%C3%A2u%20%C3%81%20xanh%20lam%2C%20Ch%C3%A2u%20%C3%82u%20xanh%20l%C3%A1%2C%20Hoa%20K%E1%BB%B3%20t%C3%ADm") : "UTC sessions: Asia cyan, Europe green, US purple", resetView: locale === "vi" ? "Đặt lại biểu đồ về các nến gần nhất" : "Reset chart view to recent bars", keyboardHelp: chartCopy.keyboardHelp };
   const recentCount = defaultVisibleCandles(size.w > 84 ? size.w - 84 : Math.max(168, window.innerWidth - 150));
   // Keep the integer evidence window and its fractional pixel offset in one
   // state cell.  Crossing a candle boundary therefore cannot paint an
@@ -371,6 +469,9 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   const [annotationFocusIndex, setAnnotationFocusIndex] = useState(0);
   const annotationRefs = useRef<Array<SVGGElement | null>>([]);
   const [tool, setTool] = useState<Tool>("cursor");
+  // The focused surface is chart-first. Keep drawing tools available without
+  // reserving a permanent rail beside the candles.
+  const [toolsOpen, setToolsOpen] = useState(!compactChrome);
   const [toolFocusIndex, setToolFocusIndex] = useState(0);
   const [toolbarHorizontal, setToolbarHorizontal] = useState(false);
   useEffect(() => {
@@ -535,6 +636,14 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   // keep the same candles focused when the retained history window shifts.
   useEffect(() => {
     if (n < 2 || hydratedViewportKey === viewportStorageKey) return;
+    // A live focused chart opens at the newest retained candle. Manual pan is
+    // still free after mount, while an old local viewport cannot hide fresh
+    // MT5 evidence on startup.
+    if (startAtLatest || (live && landmarksAtLatestOnly)) {
+      setView([Math.max(0, n - recentCount), n - 1]);
+      setHydratedViewportKey(viewportStorageKey);
+      return;
+    }
     const saved = readSavedViewport(viewportStorageKey);
     // Timestamp identity wins over the old numeric index. If a candle has
     // expired from the two-year tape, fall back to the recent edge instead of
@@ -545,7 +654,7 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
     const start = Math.max(0, Math.min(n - 2, Math.min(a, end - 1)));
     setView([start, end]);
     setHydratedViewportKey(viewportStorageKey);
-  }, [viewportStorageKey, hydratedViewportKey, n, bars[0]?.t, bars[n - 1]?.t]);
+  }, [viewportStorageKey, hydratedViewportKey, n, recentCount, startAtLatest, bars[0]?.t, bars[n - 1]?.t]);
   useEffect(() => {
     if (!viewportRestore) {
       // A later snapshot may intentionally omit a nonce; clear the previous
@@ -612,7 +721,8 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
     if (!identityChanged || !previous || previous.length < 2 || bars.length < 2 || previous === bars) return;
     setPanFrameState((prior) => {
       const current = prior.view;
-      const anchored = reanchorViewport({ start: current[0], end: current[1], startTime: previous[current[0]]?.t, endTime: previous[current[1]]?.t }, previous, bars, live || landmarksAtLatestOnly);
+      const followLatest = panFrameState.offset === 0 && current[1] >= previous.length - 1;
+      const anchored = reanchorViewport({ start: current[0], end: current[1], startTime: previous[current[0]]?.t, endTime: previous[current[1]]?.t }, previous, bars, followLatest && (live || landmarksAtLatestOnly));
       // Refresh reconciliation is not an explicit Reset/zoom request. Keep
       // the settled fractional displacement when the same UTC candles remain
       // visible, including after a leading retention shift. Calling setView
@@ -622,7 +732,7 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
       return { view: [anchored.start, anchored.end], offset: sameWidth ? prior.offset : 0 };
     });
   // The identity includes interior UTC rows, not only retention endpoints.
-  }, [viewportBarIdentity, bars.length, bars[bars.length - 1]?.t, live, landmarksAtLatestOnly, panActive]);
+  }, [viewportBarIdentity, bars.length, bars[bars.length - 1]?.t, live, landmarksAtLatestOnly, panActive, panFrameState.offset]);
   useEffect(() => {
     // Replay cursor updates can arrive while a user is panning. Do not let an
     // unrelated cursor tick overwrite the in-progress manual viewport; this
@@ -769,7 +879,7 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
     if (liveTail && index >= liveTail.start) return liveValues?.[index - liveTail.start] ?? (index === bars.length - 1 ? tail : undefined);
     return tail !== undefined && index === bars.length - 1 ? tail : series[index];
   };
-  if (n < 2) return <div ref={setWrap} style={{ flex: 1, minHeight: 0, display: "flex" }}><div className="mfe-empty" role="status" aria-live="polite" aria-label={n === 0 ? `No closed-bar data available for ${symbol} ${tf}` : `Insufficient closed-bar data for ${symbol} ${tf}`} style={{ flex: 1 }}><div className="ic" aria-hidden="true">?</div><div className="msg">{n === 0 ? `No closed-bar data for ${symbol} ${tf}` : `Need at least two closed bars for ${symbol} ${tf}`}</div></div></div>;
+  if (n < 2) return <div ref={setWrap} style={{ flex: 1, minHeight: 0, display: "flex" }}><div className="mfe-empty" role="status" aria-live="polite" aria-label={n === 0 ? chartCopy.noData : chartCopy.insufficientData} style={{ flex: 1 }}><div className="ic" aria-hidden="true">?</div><div className="msg">{n === 0 ? chartCopy.noData : chartCopy.insufficientData}</div></div></div>;
 
   // Y-domain fits the visible candles AND any overlaid zones/lines, so wider zones (e.g. a higher-TF Setup
   // Fit) auto-zoom the chart out instead of clipping. Zone influence is capped to Kx the candle range so the
@@ -1124,25 +1234,27 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   const toggleDrawingsVisibility = () => {
     const nextHidden = !hideDraws;
     setHideDraws(nextHidden);
-    setChartKeyStatus(nextHidden
-      ? "Drawings hidden; annotations remain saved. SHADOW_ONLY; NO_DECISION."
-      : "Drawings shown. SHADOW_ONLY; NO_DECISION.");
+    setChartKeyStatus(drawingVisibilityStatus(locale, nextHidden));
   };
   const annotationCount = visibleSignals.length + visibleTrades.length;
   const activeAnnotationIndex = annotationCount ? Math.min(annotationFocusIndex, annotationCount - 1) : 0;
+  const emptyAnnotationStatus = locale === "vi"
+    ? viCopy("Kh%C3%B4ng%20c%C3%B3%20ch%C3%BA%20th%C3%ADch%20quan%20s%C3%A1t%20n%C3%A0o%20trong%20khung%20%C4%91ang%20hi%E1%BB%83n%20th%E1%BB%8B.%20CH%E1%BB%88%20QUAN%20S%C3%81T%3B%20KH%C3%94NG%20QUY%E1%BA%BET%20%C4%90%E1%BB%8ANH.")
+    : "No shadow annotations in visible window. SHADOW_ONLY; NO_DECISION.";
+  const populatedAnnotationStatus = locale === "vi" ? viCopy("C%C3%B3%20ch%C3%BA%20th%C3%ADch%20quan%20s%C3%A1t%20trong%20khung%20%C4%91ang%20hi%E1%BB%83n%20th%E1%BB%8B.") : "Annotations available in the visible window.";
   // Keep the roving anchor valid when panning, replaying, or filtering changes the
   // visible annotation set. Stale SVG refs must not become keyboard destinations.
   useEffect(() => {
     annotationRefs.current = annotationRefs.current.slice(0, annotationCount);
     setAnnotationFocusIndex((index) => annotationCount ? Math.min(index, annotationCount - 1) : 0);
-    if (!annotationCount) setChartKeyStatus("No shadow annotations in visible window. SHADOW_ONLY; NO_DECISION.");
-  }, [annotationCount]);
+    setChartKeyStatus(annotationCount ? populatedAnnotationStatus : emptyAnnotationStatus);
+  }, [annotationCount, emptyAnnotationStatus, populatedAnnotationStatus]);
   const annotationStatus = (index: number) => {
-    const position = annotationCount ? ` ${Math.min(annotationCount, Math.max(1, index + 1))} of ${annotationCount}` : "";
+    const position = annotationCount ? locale === "vi" ? ` ${Math.min(annotationCount, Math.max(1, index + 1))} trên ${annotationCount}` : ` ${Math.min(annotationCount, Math.max(1, index + 1))} of ${annotationCount}` : "";
     const signal = visibleSignals[index];
     if (signal) {
-      const outcome = signal.nextBarOutcome ? `next closed bar ${signal.nextBarOutcome}` : signal.outcome === "pending" ? "outcome pending" : `outcome ${signal.outcome}`;
-      return `Shadow annotation${position} ${signal.label} at ${shortTime(signal.time)}; ${outcome}; SHADOW_ONLY; NO_DECISION.`;
+      const outcome = signal.nextBarOutcome ? `${locale === "vi" ? "nến đóng tiếp theo" : "next closed bar"} ${signal.nextBarOutcome}` : signal.outcome === "pending" ? (locale === "vi" ? "kết quả đang chờ" : "outcome pending") : `${locale === "vi" ? "kết quả" : "outcome"} ${signal.outcome}`;
+      return locale === "vi" ? `Chú thích quan sát${position} ${localizedMarkerLabel(signal.label, locale)} tại ${shortTime(signal.time)}; ${outcome}; CHỈ QUAN SÁT; KHÔNG QUYẾT ĐỊNH.` : `Shadow annotation${position} ${localizedMarkerLabel(signal.label, locale)} at ${shortTime(signal.time)}; ${outcome}; SHADOW_ONLY; NO_DECISION.`;
     }
     const trade = visibleTrades[index - visibleSignals.length];
     if (trade) {
@@ -1353,12 +1465,22 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   const formingInViewport = formingVisible && endpointIsTail;
   const endpointLabel = formingInViewport ? "LIVE" : endpointIsTail ? "LAST" : "VIEW";
   const closedTail = closedBars[closedBars.length - 1];
-  const researchLandmarks = lines.length ? ` Research landmarks: ${lines.map((line) => line.label).join(", ")}.` : "";
+  const researchLandmarks = lines.length ? `${locale === "vi" ? "Mốc nghiên cứu" : "Research landmarks"}: ${lines.map((line) => line.label).join(", ")}.` : "";
   const latestReadout = formingInViewport
-    ? `Latest forming price ${fp(last.c)}; open ${fp(last.o)}, high ${fp(last.h)}, low ${fp(last.l)}${closedTail ? `; latest closed-bar close ${fp(closedTail.c)}` : ""}.`
-    : `Visible endpoint close ${fp(last.c)} at ${last.t} UTC; ${endpointIsTail ? "latest retained candle" : "historical viewport"}; open ${fp(last.o)}, high ${fp(last.h)}, low ${fp(last.l)}.`;
-  const chartDescription = `${symbol} ${tf} research chart; ${nView} visible bars from ${shortTime(vis[0].t)} to ${shortTime(last.t)} (${closedBars.length} closed bars${formingInViewport ? "; a forming candle is shown for context and is not closed-bar evidence" : ""}). ${latestReadout}${researchLandmarks} Shadow only; no decision or order.`;
-  const evidenceStatus = `Research evidence: ${closedBars.length.toLocaleString()} closed bars${formingInViewport ? "; forming candle shown for context" : ""}. SHADOW_ONLY · NO_DECISION · no order authority.`;
+    ? locale === "vi"
+      ? `Giá nến đang hình thành mới nhất ${fp(last.c)}; mở ${fp(last.o)}, cao ${fp(last.h)}, thấp ${fp(last.l)}${closedTail ? `; giá đóng cửa nến gần nhất ${fp(closedTail.c)}` : ""}.`
+      : `Latest forming price ${fp(last.c)}; open ${fp(last.o)}, high ${fp(last.h)}, low ${fp(last.l)}${closedTail ? `; latest closed-bar close ${fp(closedTail.c)}` : ""}.`
+    : locale === "vi"
+      ? `Giá đóng cửa tại điểm cuối khung ${fp(last.c)} lúc ${last.t} UTC; ${endpointIsTail ? "nến gần nhất được lưu" : "khung lịch sử"}; mở ${fp(last.o)}, cao ${fp(last.h)}, thấp ${fp(last.l)}.`
+      : `Visible endpoint close ${fp(last.c)} at ${last.t} UTC; ${endpointIsTail ? "latest retained candle" : "historical viewport"}; open ${fp(last.o)}, high ${fp(last.h)}, low ${fp(last.l)}.`;
+  // Accessibility copy uses a price label for the forming row, never a closed-bar close.
+  // Latest forming price"} ${fp(last.c)}
+  const chartDescription = locale === "vi"
+    ? `${symbol} ${tf} biểu đồ nghiên cứu; ${nView} nến hiển thị từ ${shortTime(vis[0].t)} đến ${shortTime(last.t)} (${closedBars.length.toLocaleString()} nến đóng${formingInViewport ? "; có nến đang hình thành để tham khảo, không phải bằng chứng nến đóng" : ""}). ${latestReadout}${researchLandmarks ? ` ${researchLandmarks}` : ""} Chỉ quan sát; không quyết định hay đặt lệnh.`
+    : `${symbol} ${tf} research chart; ${nView} visible bars from ${shortTime(vis[0].t)} to ${shortTime(last.t)} (${closedBars.length} closed bars${formingInViewport ? "; a forming candle is shown for context and is not closed-bar evidence" : ""}). ${latestReadout}${researchLandmarks} Shadow only; no decision or order.`;
+  const evidenceStatus = locale === "vi"
+    ? `Bằng chứng nghiên cứu: ${closedBars.length.toLocaleString()} nến đóng${formingInViewport ? "; có nến đang hình thành để tham khảo" : ""}. CHỈ QUAN SÁT · KHÔNG QUYẾT ĐỊNH · không có quyền đặt lệnh.`
+    : `Research evidence: ${closedBars.length.toLocaleString()} closed bars${formingInViewport ? "; forming candle shown for context" : ""}. SHADOW_ONLY · NO_DECISION · no order authority.`;
   // plan zones are "as of NOW" ? anchor them to the recent/right area so they don't read like historical levels
   const xNow = xFor(end); const xAnchor = Math.max(PX0, xNow - Math.min(nView - 1, 20) * slot);
   const compactZoneLabels = zoneLayout === "wide" && PX1 - PX0 < 340;
@@ -1382,6 +1504,8 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   const TOOLS = MICROCHART_TOOL_SHORTCUTS;
   const researchStatusLabel = locale === "vi" ? "Dự báo" : "Forecast";
   const researchProvenanceLabel = locale === "vi" ? "Nguồn nến đóng" : "Closed-bar provenance";
+  const patternAuthority = locale === "vi" ? "CHỈ QUAN SÁT; KHÔNG QUYẾT ĐỊNH; không có quyền đặt lệnh" : "SHADOW_ONLY; NO_DECISION; no order authority";
+  const patternStatusAria = locale === "vi" ? `Mô hình nến đóng hiện tại: ${researchPattern || ""}; ${patternAuthority}` : `Current closed-bar pattern: ${researchPattern || ""}; ${patternAuthority}`;
   const tbtn = (active: boolean): React.CSSProperties => ({ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 7, cursor: "pointer", border: "1px solid transparent", background: active ? "var(--tv-tool-active-bg)" : "transparent", color: active ? "var(--accent-cyan)" : "var(--text-secondary)" });
   const onToolKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -1403,33 +1527,34 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
   };
 
   return (
-    <div className="mfe-market-chart microchart-tv" style={{ display: "flex", flex: 1, minWidth: 0, minHeight: 0, border: "1px solid var(--border-panel)", borderRadius: 6, overflow: "hidden", background: "var(--chart-canvas)" }}>
+    <div className={`mfe-market-chart microchart-tv${compactChrome ? " microchart-focused" : ""}`} style={{ display: "flex", flex: 1, minWidth: 0, minHeight: 0, position: "relative", border: "1px solid var(--border-panel)", borderRadius: 6, overflow: "hidden", background: "var(--chart-canvas)" }}>
+      {compactChrome && <button type="button" className="microchart-tools-toggle" aria-expanded={toolsOpen} aria-controls="microchart-tool-rail" onClick={() => setToolsOpen((open) => !open)}>{toolsOpen ? (locale === "vi" ? "Ẩn công cụ" : "Hide tools") : (locale === "vi" ? "Công cụ" : "Tools")}</button>}
       {/* left tool rail */}
-      <div className="microchart-tool-rail" role="toolbar" aria-label="Chart drawing and annotation tools" aria-orientation={toolbarHorizontal ? "horizontal" : "vertical"} aria-describedby={chartHelpId} style={{ width: 40, flexShrink: 0, borderRight: "1px solid var(--border-subtle)", background: "var(--bg-panel)", display: "flex", flexDirection: toolbarHorizontal ? "row" : "column", alignItems: "center", padding: "6px 0", gap: 2, overflowY: toolbarHorizontal ? "hidden" : "auto" }}>
-        {TOOLS.map((t, index) => <button key={t.id} ref={(node) => { toolButtonRefs.current[index] = node; }} type="button" title={`${t.t} (${t.shortcut})`} aria-label={t.t} aria-keyshortcuts={t.shortcut} aria-pressed={tool === t.id} tabIndex={index === toolFocusIndex ? 0 : -1} onFocus={() => setToolFocusIndex(index)} onKeyDown={(event) => onToolKeyDown(event, index)} onClick={() => selectTool(t.id, index)} style={tbtn(tool === t.id)}><Ico n={t.id} /></button>)}
+      <div id="microchart-tool-rail" className="microchart-tool-rail" role="toolbar" aria-label={chartCopy.toolRail} aria-orientation={toolbarHorizontal ? "horizontal" : "vertical"} aria-describedby={chartHelpId} style={{ width: 40, flexShrink: 0, borderRight: "1px solid var(--border-subtle)", background: "var(--bg-panel)", display: compactChrome && !toolsOpen ? "none" : "flex", flexDirection: toolbarHorizontal ? "row" : "column", alignItems: "center", padding: "6px 0", gap: 2, overflowY: toolbarHorizontal ? "hidden" : "auto" }}>
+        {TOOLS.map((t, index) => <button key={t.id} ref={(node) => { toolButtonRefs.current[index] = node; }} type="button" title={`${toolLabel(t.id)} (${t.shortcut})`} aria-label={toolLabel(t.id)} aria-keyshortcuts={t.shortcut} aria-pressed={tool === t.id} tabIndex={index === toolFocusIndex ? 0 : -1} onFocus={() => setToolFocusIndex(index)} onKeyDown={(event) => onToolKeyDown(event, index)} onClick={() => selectTool(t.id, index)} style={tbtn(tool === t.id)}><Ico n={t.id} /></button>)}
         <div style={{ width: 22, height: 1, background: "var(--border-subtle)", margin: "4px 0" }} />
-        <button type="button" title="Magnet (snap to OHLC)" aria-label="Magnet (snap to OHLC)" aria-pressed={magnet} onClick={() => setMagnet((m) => !m)} style={tbtn(magnet)}><Ico n="magnet" /></button>
-        <button type="button" title="Lock drawings" aria-label="Lock drawings" aria-pressed={lock} onClick={() => setLock((l) => !l)} style={tbtn(lock)}><Ico n="lock" /></button>
-        <button type="button" title={hideDraws ? "Show drawings" : "Hide drawings"} aria-label={hideDraws ? "Show drawings" : "Hide drawings"} aria-pressed={hideDraws} onClick={toggleDrawingsVisibility} style={tbtn(hideDraws)}><Ico n="eye" /></button>
-        <button type="button" title="Undo drawing (Ctrl+Z)" aria-label="Undo drawing" aria-keyshortcuts="Control+Z" disabled={lock || undoStack.length === 0} onClick={undoDrawing} style={{ ...tbtn(false), color: lock || undoStack.length === 0 ? "#3a4d61" : "var(--text-secondary)", cursor: lock || undoStack.length === 0 ? "not-allowed" : "pointer" }}><Ico n="undo" /></button>
-        <button type="button" title="Redo drawing (Ctrl+Shift+Z)" aria-label="Redo drawing" aria-keyshortcuts="Control+Shift+Z" disabled={lock || redoStack.length === 0} onClick={redoDrawing} style={{ ...tbtn(false), color: lock || redoStack.length === 0 ? "#3a4d61" : "var(--text-secondary)", cursor: lock || redoStack.length === 0 ? "not-allowed" : "pointer" }}><Ico n="redo" /></button>
+        <button type="button" title={chartCopy.magnetLabel} aria-label={chartCopy.magnetLabel} aria-pressed={magnet} onClick={() => setMagnet((m) => !m)} style={tbtn(magnet)}><Ico n="magnet" /></button>
+        <button type="button" title={chartCopy.lockLabel} aria-label={chartCopy.lockLabel} aria-pressed={lock} onClick={() => setLock((l) => !l)} style={tbtn(lock)}><Ico n="lock" /></button>
+        <button type="button" title={hideDraws ? chartCopy.showDrawings : chartCopy.hideDrawings} aria-label={hideDraws ? chartCopy.showDrawings : chartCopy.hideDrawings} aria-pressed={hideDraws} onClick={toggleDrawingsVisibility} style={tbtn(hideDraws)}><Ico n="eye" /></button>
+        <button type="button" title={`${chartCopy.undo} (Ctrl+Z)`} aria-label={chartCopy.undo} aria-keyshortcuts="Control+Z" disabled={lock || undoStack.length === 0} onClick={undoDrawing} style={{ ...tbtn(false), color: lock || undoStack.length === 0 ? "#3a4d61" : "var(--text-secondary)", cursor: lock || undoStack.length === 0 ? "not-allowed" : "pointer" }}><Ico n="undo" /></button>
+        <button type="button" title={`${chartCopy.redo} (Ctrl+Shift+Z)`} aria-label={chartCopy.redo} aria-keyshortcuts="Control+Shift+Z" disabled={lock || redoStack.length === 0} onClick={redoDrawing} style={{ ...tbtn(false), color: lock || redoStack.length === 0 ? "#3a4d61" : "var(--text-secondary)", cursor: lock || redoStack.length === 0 ? "not-allowed" : "pointer" }}><Ico n="redo" /></button>
         <div className="microchart-tool-spacer" style={{ flex: 1, minHeight: 6 }} />
-        <button type="button" title="Clear drawings" aria-label="Clear drawings" disabled={lock} onClick={clearDrawings} style={{ ...tbtn(false), color: lock ? "#3a4d61" : "#ff8c8c", cursor: lock ? "not-allowed" : "pointer" }}><Ico n="trash" /></button>
+        <button type="button" title={chartCopy.clearLabel} aria-label={chartCopy.clearLabel} disabled={lock} onClick={clearDrawings} style={{ ...tbtn(false), color: lock ? "#3a4d61" : "#ff8c8c", cursor: lock ? "not-allowed" : "pointer" }}><Ico n="trash" /></button>
       </div>
 
       {/* chart + bottom bar */}
       <div className="microchart-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {researchStatus && <div className="micro-research-status" role="status" aria-live="polite" aria-label={locale === "vi" ? `Trạng thái nghiên cứu dự báo: ${researchStatus}` : `Forecast research status: ${researchStatus}`} aria-atomic="true">{researchStatusLabel} · {researchStatus}</div>}
-        {researchProvenance && <div className="micro-research-provenance" role="status" aria-live="polite" aria-label={locale === "vi" ? `Nguồn dữ liệu nến đóng: ${researchProvenance}` : `Closed-bar provenance: ${researchProvenance}`} aria-atomic="true">{researchProvenanceLabel} · {researchProvenance}</div>}
-        {researchPattern && <div className="micro-pattern-status" role="status" aria-live="polite" aria-label={`Current closed-bar pattern: ${researchPattern}; SHADOW_ONLY; NO_DECISION; no order authority`} aria-atomic="true">
+        {!compactChrome && researchStatus && <div className="micro-research-status" role="status" aria-live="polite" aria-label={locale === "vi" ? `Trạng thái nghiên cứu dự báo: ${researchStatus}` : `Forecast research status: ${researchStatus}`} aria-atomic="true">{researchStatusLabel} · {researchStatus}</div>}
+        {!compactChrome && researchProvenance && <div className="micro-research-provenance" role="status" aria-live="polite" aria-label={locale === "vi" ? `Nguồn dữ liệu nến đóng: ${researchProvenance}` : `Closed-bar provenance: ${researchProvenance}`} aria-atomic="true">{researchProvenanceLabel} · {researchProvenance}</div>}
+        {!compactChrome && researchPattern && <div className="micro-pattern-status" role="status" aria-live="polite" aria-label={patternStatusAria} aria-atomic="true">
           <span className="micro-pattern-status-label">{locale === "vi" ? "Mô hình hiện tại" : "Current pattern"}</span>
           {researchPatternSignals.length > 0
-            ? <span className="micro-pattern-status-chips">{researchPatternSignals.map((signal) => { const label = researchPatternLabel?.(signal) || signal.label; const authority = "SHADOW_ONLY; NO_DECISION; no order authority"; const inspect = locale === "vi" ? "Kiểm tra mô hình hiện tại" : "Inspect current pattern"; const at = locale === "vi" ? "tại" : "at"; return <button key={`${signal.conceptId || signal.label}:${signal.time}`} type="button" className="micro-pattern-status-button" aria-label={`${inspect} ${label} ${at} ${shortTime(signal.time)}; ${authority}`} title={`${label} · ${shortTime(signal.time)} · ${authority}`} onClick={() => onSignalSelect?.(signal)}>{label}</button>; })}</span>
+            ? <span className="micro-pattern-status-chips">{researchPatternSignals.map((signal) => { const label = researchPatternLabel?.(signal) || signal.label; const authority = patternAuthority; const inspect = locale === "vi" ? "Kiểm tra mô hình hiện tại" : "Inspect current pattern"; const at = locale === "vi" ? "tại" : "at"; return <button key={`${signal.conceptId || signal.label}:${signal.time}`} type="button" className="micro-pattern-status-button" aria-label={`${inspect} ${label} ${at} ${shortTime(signal.time)}; ${authority}`} title={`${label} · ${shortTime(signal.time)} · ${authority}`} onClick={() => onSignalSelect?.(signal)}>{label}</button>; })}</span>
             : <span className="micro-pattern-status-copy">{researchPattern}</span>}
           {researchPatternSignals.length > 0 && <details className="micro-pattern-status-explanation"><summary>{locale === "vi" ? "Vì sao / PDF" : "Why / PDF"}</summary><span className="micro-pattern-status-detail">{researchPattern}</span></details>}
-          <span className="micro-pattern-status-authority">SHADOW_ONLY · NO_DECISION · no order authority</span>
+          <span className="micro-pattern-status-authority">{patternAuthority.replace(/; /g, " · ")}</span>
         </div>}
-        {live && (() => {
+        {!compactChrome && live && (() => {
           const feedStatus = tickFeed.status === "live"
             ? (locale === "vi" ? decodeURIComponent("Tick%20%C4%91ang%20ho%E1%BA%A1t%20%C4%91%E1%BB%99ng") : "Live ticks")
             : tickFeed.status === "stale"
@@ -1443,15 +1568,21 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
           const formingLabel = locale === "vi" ? decodeURIComponent("n%E1%BA%BFn%20%C4%91ang%20h%C3%ACnh%20th%C3%A0nh") : "forming candle";
           const closedWait = locale === "vi" ? decodeURIComponent("%C4%90%C3%A1nh%20d%E1%BA%A5u%20v%C3%A0%20th%E1%BB%91ng%20k%C3%AA%20n%E1%BA%BFn%20%C4%91%C3%B3ng%20ch%E1%BB%9D%20n%E1%BA%BFn%20M5%20%C4%91%C3%B3ng") : "closed markers and statistics wait for the M5 close";
           const liveFeedLabel = locale === "vi" ? decodeURIComponent("Ngu%E1%BB%93n%20tick%20tr%E1%BB%B1c%20ti%E1%BA%BFp") : "Live tick feed";
-          return <div className="micro-live-quote" aria-label={liveFeedLabel} data-ticks={tickFeed.received} data-tick-time={quote?.time_msc} data-bid={quote?.bid} data-ask={quote?.ask} style={{ minHeight: 28, display: "flex", gap: 14, alignItems: "center", padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", color: "var(--text-secondary)", font: "12px " + MONO, fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}><span style={{ color: tickFeed.status === "live" ? "var(--bull-green)" : "var(--warn-amber)", fontWeight: 700 }}>{feedStatus}</span><span>BID <b>{quote ? quote.bid.toLocaleString("en-US", { maximumFractionDigits: 5 }) : quoteUnavailable}</b></span><span>ASK <b>{quote ? quote.ask.toLocaleString("en-US", { maximumFractionDigits: 5 }) : quoteUnavailable}</b></span><span>{frame ? `${frame.broker_symbol} \u00b7 ${formingLabel}` : ""}</span><span role="status" aria-live="polite" aria-atomic="true" data-live-detection={liveDetection.state} aria-label={`${liveDetection.label}; ${liveDetection.reason}; ${liveDetection.authority}`} style={{ color: liveDetection.state === "PROVISIONAL" ? "var(--warn-amber)" : "var(--text-secondary)", fontWeight: 700 }}>{liveDetection.label}</span><small style={{ flexBasis: "100%", color: "var(--text-secondary)" }}>{liveDetection.timestamp ? `${liveDetection.timestamp} UTC \u00b7 ${liveDetection.reason}` : liveDetection.reason} \u00b7 {closedWait} \u00b7 {liveDetection.authority}</small></div>;
+          const separator = "·";
+          const quoteLocale = locale === "vi" ? "vi-VN" : "en-US";
+          const bidLabel = locale === "vi" ? "Giá BID" : "BID quote";
+          const askLabel = locale === "vi" ? "Giá ASK" : "ASK quote";
+          const bidValue = quote ? quote.bid.toLocaleString(quoteLocale, { maximumFractionDigits: 5 }) : quoteUnavailable;
+          const askValue = quote ? quote.ask.toLocaleString(quoteLocale, { maximumFractionDigits: 5 }) : quoteUnavailable;
+          return <div className="micro-live-quote" aria-label={liveFeedLabel} data-ticks={tickFeed.received} data-tick-time={quote?.time_msc} data-bid={quote?.bid} data-ask={quote?.ask} style={{ minHeight: 28, display: "flex", gap: 14, alignItems: "center", padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)", color: "var(--text-secondary)", font: "12px " + MONO, fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}><span style={{ color: tickFeed.status === "live" ? "var(--bull-green)" : "var(--warn-amber)", fontWeight: 700 }}>{feedStatus}</span><span aria-label={`${bidLabel}: ${bidValue}`}>BID <b>{bidValue}</b></span><span aria-label={`${askLabel}: ${askValue}`}>ASK <b>{askValue}</b></span><span>{frame ? `${frame.broker_symbol} ${separator} ${formingLabel}` : ""}</span><span role="status" aria-live="polite" aria-atomic="true" data-live-detection={liveDetection.state} aria-label={`${liveDetection.label}; ${liveDetection.reason}; ${liveDetection.authority}`} style={{ color: liveDetection.state === "PROVISIONAL" ? "var(--warn-amber)" : "var(--text-secondary)", fontWeight: 700 }}>{liveDetection.label}</span><small style={{ flexBasis: "100%", color: "var(--text-secondary)" }}>{liveDetection.timestamp ? `${liveDetection.timestamp} UTC ${separator} ${liveDetection.reason}` : liveDetection.reason} {separator} {closedWait} {separator} {liveDetection.authority}</small></div>;
         })()}
-        {W < 480 && <div className="microchart-price-legend" aria-label="Candle and EMA values">
+        {W < 480 && !compactChrome && <div className="microchart-price-legend" aria-label={chartCopy.legendLabel}>
           <div className="microchart-price-legend-heading"><strong>{symbol} · {tf}</strong><time dateTime={lb.t}>{shortTime(lb.t)} UTC</time></div>
           <div className="microchart-price-legend-values">{[["O", lb.o], ["H", lb.h], ["L", lb.l], ["C", lb.c]].map(([label, value]) => <span key={label}><span>{label}</span><b>{fp(value as number)}</b></span>)}</div>
           <div className="microchart-price-legend-ema"><span>EMA10 <b>{fp(legendEmaF ?? 0)}</b></span><span>EMA34 <b>{fp(legendEmaS ?? 0)}</b></span></div>
         </div>}
         <div className="mfe-chart-plot" ref={setWrap} style={{ flex: 1, minHeight: 0, display: "flex", position: "relative", background: "var(--chart-canvas)" }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="microchart-canvas" role="group" aria-roledescription="interactive research chart" tabIndex={0} aria-label={chartDescription} aria-describedby={chartHelpId} aria-keyshortcuts="Escape Home End PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + - C T H F R B X M" style={{ display: "block", background: "var(--chart-canvas)", cursor: tool === "cursor" ? (drag.current ? "grabbing" : "crosshair") : "cell", touchAction: "none" }}
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="microchart-canvas" role="group" aria-roledescription={locale === "vi" ? "biểu đồ nghiên cứu tương tác" : "interactive research chart"} tabIndex={0} aria-label={chartDescription} aria-describedby={chartHelpId} aria-keyshortcuts="Escape Home End PageUp PageDown ArrowLeft ArrowRight ArrowUp ArrowDown + - C T H F R B X M" style={{ display: "block", background: "var(--chart-canvas)", cursor: tool === "cursor" ? (drag.current ? "grabbing" : "crosshair") : "cell", touchAction: "none" }}
             onKeyDown={onChartKeyDown} onDoubleClick={onChartDoubleClick} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onPointerCancel} onPointerLeave={() => setHover(null)}>
             <title>{chartDescription}</title>
             <desc>Closed-bar candlesticks with EMA, VWAP, session bands, research zones, and optional shadow trade annotations.</desc>
@@ -1459,15 +1590,15 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
                 introducing another outer context panel. */}
             <rect x={PX1} y={PY0} width={MR} height={PH} fill="var(--chart-axis-bg)" pointerEvents="none" />
             <line x1={PX1} y1={PY0} x2={PX1} y2={PY1} stroke="var(--chart-axis-border)" pointerEvents="none" />
-            {blocks.map((b, k) => <g key={`s${k}`}><rect x={Math.max(PX0, b.x0)} y={PY0} width={Math.max(0, Math.min(PX1, b.x1) - Math.max(PX0, b.x0))} height={PH} fill={b.c} opacity="0.045" />{b.x1 - b.x0 > 40 && <text x={(Math.max(PX0, b.x0) + Math.min(PX1, b.x1)) / 2} y={PY0 + 10} fill={b.c} fontSize="9" textAnchor="middle" opacity="0.55" fontWeight="700">{b.k}</text>}</g>)}
-            {gy.map((p, k) => <g key={`gy${k}`}><line x1={PX0} y1={yFor(p)} x2={PX1} y2={yFor(p)} className="mfe-chart-grid" stroke="var(--chart-grid)" /><text x={W - 5} y={yFor(p) + 3} fill="var(--text-secondary)" fontSize="10" textAnchor="end" fontFamily={MONO}>{fp(p)}</text></g>)}
-            {gx.map((i) => <g key={`gx${i}`}><line x1={xFor(i)} y1={PY0} x2={xFor(i)} y2={PY1} className="mfe-chart-grid" stroke="var(--chart-grid)" /><text className="microchart-time-tick" x={xFor(i)} y={PY1 + 14} fill="var(--text-secondary)" fontSize="9.5" textAnchor="middle" fontFamily={MONO}>{shortTime(bars[i].t)}</text></g>)}
+            {blocks.map((b, k) => <g key={`s${k}`} pointerEvents="none"><rect x={Math.max(PX0, b.x0)} y={PY0} width={Math.max(0, Math.min(PX1, b.x1) - Math.max(PX0, b.x0))} height={PH} fill={b.c} opacity="0.045" />{b.x1 - b.x0 > 40 && <text x={(Math.max(PX0, b.x0) + Math.min(PX1, b.x1)) / 2} y={PY0 + 10} fill={b.c} fontSize="9" textAnchor="middle" opacity="0.55" fontWeight="700">{b.k}</text>}</g>)}
+            {gy.map((p, k) => <g key={`gy${k}`} pointerEvents="none"><line x1={PX0} y1={yFor(p)} x2={PX1} y2={yFor(p)} className="mfe-chart-grid" stroke="var(--chart-grid)" /><text x={W - 5} y={yFor(p) + 3} fill="var(--text-secondary)" fontSize="10" textAnchor="end" fontFamily={MONO}>{fp(p)}</text></g>)}
+            {gx.map((i) => <g key={`gx${i}`} pointerEvents="none"><line x1={xFor(i)} y1={PY0} x2={xFor(i)} y2={PY1} className="mfe-chart-grid" stroke="var(--chart-grid)" /><text className="microchart-time-tick" x={xFor(i)} y={PY1 + 14} fill="var(--text-secondary)" fontSize="9.5" textAnchor="middle" fontFamily={MONO}>{shortTime(bars[i].t)}</text></g>)}
             {zones.map((z, k) => {
               const yT = Math.max(PY0, Math.min(PY1, yFor(z.hi))), yB = Math.max(PY0, Math.min(PY1, yFor(z.lo)));
               const left = zoneLayout === "wide" ? PX0 : xAnchor;
-              if (z.hi === z.lo) return <line key={`z${k}`} x1={left} x2={PX1} y1={yT} y2={yT} stroke={zonePaint(z)} strokeDasharray="5 3" />;
+              if (z.hi === z.lo) return <line key={`z${k}`} x1={left} pointerEvents="none" x2={PX1} y1={yT} y2={yT} stroke={zonePaint(z)} strokeDasharray="5 3" />;
               if (yB - yT < 0.5) return null;
-              return <g key={`z${k}`}><rect x={left} y={yT} width={PX1 - left} height={yB - yT} fill={zonePaint(z)} opacity="0.13" stroke={zonePaint(z)} strokeOpacity="0.55" strokeDasharray="4 3" />{zoneLayout !== "wide" && z.showLabel !== false && <>{z.glyph && <ChartGlyph name={z.glyph} gx={xAnchor + 6} gy={zoneLabelY[k] - 9} gs={11} color={zonePaint(z)} />}<text x={xAnchor + 6 + (z.glyph ? 14 : 0)} y={zoneLabelY[k]} fill={zonePaint(z)} fontSize="9.5" fontWeight="800">{z.label}</text></>}</g>;
+              return <g key={`z${k}`} pointerEvents="none"><rect x={left} y={yT} width={PX1 - left} height={yB - yT} fill={zonePaint(z)} opacity="0.13" stroke={zonePaint(z)} strokeOpacity="0.55" strokeDasharray="4 3" />{zoneLayout !== "wide" && z.showLabel !== false && <>{z.glyph && <ChartGlyph name={z.glyph} gx={xAnchor + 6} gy={zoneLabelY[k] - 9} gs={11} color={zonePaint(z)} />}<text x={xAnchor + 6 + (z.glyph ? 14 : 0)} y={zoneLabelY[k]} fill={zonePaint(z)} fontSize="9.5" fontWeight="800">{z.label}</text></>}</g>;
             })}
             {visiblePosition && <HistoricalPositionOverlay position={visiblePosition} layer="areas" xFor={xFor} yFor={yFor} left={PX0} right={PX1} top={PY0} bottom={PY1} />}
             {/* Candle geometry is intentionally decorative to assistive
@@ -1485,9 +1616,10 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
                 const x0 = clampX(xFor(b.i0) - slot / 2), x1 = clampX(xFor(b.i1) + slot / 2);
                 if (x1 - x0 < 0.6) return null;
                 const c = EPISODE_COLOR[b.kind] || "#6e7681";
-                return <rect key={key} x={x0} y={yR} width={x1 - x0} height={hR} rx={1.5} fill={c} opacity={forming ? 0.3 : 0.78} stroke={forming ? c : "none"} strokeWidth={forming ? 0.8 : 0} strokeDasharray={forming ? "3 2" : undefined}><title>{`${b.kind}${forming ? "· forming" : ""} · ${b.dir > 0 ? "?" : b.dir < 0 ? "?" : "?"}`}</title></rect>;
+                const direction = b.dir > 0 ? "UP" : b.dir < 0 ? "DOWN" : "FLAT";
+                return <rect key={key} x={x0} y={yR} width={x1 - x0} height={hR} rx={1.5} fill={c} opacity={forming ? 0.3 : 0.78} stroke={forming ? c : "none"} strokeWidth={forming ? 0.8 : 0} strokeDasharray={forming ? "3 2" : undefined}><title>{`${b.kind}${forming ? " forming" : ""} ? ${direction}`}</title></rect>;
               };
-              return <g>
+              return <g pointerEvents="none">
                 <text x={2} y={yR + 4.5} fill="var(--text-secondary)" fontSize="9" fontFamily={MONO}>ep</text>
                 {episodes.map((b, k) => seg(b, "ep" + k, false))}
                 {formingEpisode && seg(formingEpisode, "epF", true)}
@@ -1496,40 +1628,40 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
             {/* strategy trade markers — entry tagged BUY/SELL + timeframe; exit = TP/SL dot. Labels when zoomed in. */}
             {visibleReplayMarkers.filter((marker) => marker.price >= lo && marker.price <= hi).map((m, k) => {
               const x = xFor(m.i), y = yFor(m.price), lab = nView < 360;
-              const onMk = tradeHover === m.i;   // hover the entry triangle ? same "why" popup (entry bar = trade.entryI)
+              const onMk = tradeHover === m.i;   // hover the entry triangle to open the reason popup (entry bar = trade.entryI)
               const mkHover = (m.kind === "buy" || m.kind === "sell") ? { style: { cursor: "help" as const }, onMouseEnter: () => setTradeHover(m.i), onMouseLeave: () => setTradeHover((h) => (h === m.i ? null : h)) } : {};
               if (m.kind === "buy") return (
-                <g key={`mk${k}`} {...mkHover}>
+                <g key={`mk${k}`} {...mkHover} pointerEvents="all" onPointerDown={(event) => event.stopPropagation()}>
                   <circle cx={x} cy={y + 8} r="12" fill="transparent" />
                   <path d={`M ${x} ${y + 12} l -5 -8 l 10 0 z`} fill="var(--bull-green)" stroke={onMk ? "#fff" : "var(--chart-canvas)"} strokeWidth={onMk ? 1.1 : 0.5} />
-                  {lab && <g transform={`translate(${x},${y + 26})`}><rect x="-22" y="-7.5" width="44" height="14" rx="3" fill="#0c1f16" stroke="var(--bull-green)" strokeWidth="0.8" /><text x="0" y="2.6" fill="var(--bull-green)" fontSize="9" fontWeight="800" textAnchor="middle">–² BUY {tf}</text></g>}
+                  {lab && <g transform={`translate(${x},${y + 26})`}><rect x="-22" y="-7.5" width="44" height="14" rx="3" fill="#0c1f16" stroke="var(--bull-green)" strokeWidth="0.8" /><text x="0" y="2.6" fill="var(--bull-green)" fontSize="9" fontWeight="800" textAnchor="middle">BUY {tf}</text></g>}
                 </g>
               );
               if (m.kind === "sell") return (
-                <g key={`mk${k}`} {...mkHover}>
+                <g key={`mk${k}`} {...mkHover} pointerEvents="all" onPointerDown={(event) => event.stopPropagation()}>
                   <circle cx={x} cy={y - 8} r="12" fill="transparent" />
                   <path d={`M ${x} ${y - 12} l -5 8 l 10 0 z`} fill="var(--bear-red)" stroke={onMk ? "#fff" : "var(--chart-canvas)"} strokeWidth={onMk ? 1.1 : 0.5} />
-                  {lab && <g transform={`translate(${x},${y - 26})`}><rect x="-22" y="-7.5" width="44" height="14" rx="3" fill="#1f0c0d" stroke="var(--bear-red)" strokeWidth="0.8" /><text x="0" y="2.6" fill="var(--bear-red)" fontSize="9" fontWeight="800" textAnchor="middle">–¼ SELL {tf}</text></g>}
+                  {lab && <g transform={`translate(${x},${y - 26})`}><rect x="-22" y="-7.5" width="44" height="14" rx="3" fill="#1f0c0d" stroke="var(--bear-red)" strokeWidth="0.8" /><text x="0" y="2.6" fill="var(--bear-red)" fontSize="9" fontWeight="800" textAnchor="middle">SELL {tf}</text></g>}
                 </g>
               );
               const col = m.kind === "tp" ? "var(--bull-green)" : "var(--bear-red)";
-              return <g key={`mk${k}`}><circle cx={x} cy={y} r="2.6" fill={col} stroke="var(--chart-canvas)" strokeWidth="0.8" />{lab && <text x={x + 5} y={y + 3} fill={col} fontSize="9" fontWeight="700" fontFamily={MONO}>{m.kind.toUpperCase()}</text>}</g>;
+              return <g key={`mk${k}`} pointerEvents="none"><circle cx={x} cy={y} r="2.6" fill={col} stroke="var(--chart-canvas)" strokeWidth="0.8" />{lab && <text x={x + 5} y={y + 3} fill={col} fontSize="9" fontWeight="700" fontFamily={MONO}>{m.kind.toUpperCase()}</text>}</g>;
             })}
-            {visibleBrokerMarks.map((m,k) => { const x=xFor(m.i),y=yFor(m.price),offset=(k%3)*16;return <g key={`broker-${m.id}`} role="img" aria-label={`${m.label} ${m.detail}`}><title>{m.detail}</title><path d={`M ${x} ${y-5} l 5 5 l -5 5 l -5 -5 z`} fill={m.color} stroke="#fff" strokeWidth="1"/><line x1={x} y1={y} x2={x+12} y2={y-18-offset} stroke={m.color}/><text x={x+14} y={y-18-offset} fill={m.color} stroke="var(--chart-canvas)" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{m.label} {fp(m.price)}</text></g>; })}
+            {visibleBrokerMarks.map((m,k) => { const x=xFor(m.i),y=yFor(m.price),offset=(k%3)*16;return <g key={`broker-${m.id}`} role="img" aria-label={`${m.label} ${m.detail}`} pointerEvents="none"><title>{m.detail}</title><path d={`M ${x} ${y-5} l 5 5 l -5 5 l -5 -5 z`} fill={m.color} stroke="#fff" strokeWidth="1"/><line x1={x} y1={y} x2={x+12} y2={y-18-offset} stroke={m.color}/><text x={x+14} y={y-18-offset} fill={m.color} stroke="var(--chart-canvas)" strokeWidth="3" paintOrder="stroke" fontSize="10" fontWeight="800">{m.label} {fp(m.price)}</text></g>; })}
             {/* DECLARED projection zones — the up/down band the system states it expects, over the pending window */}
             {visibleProjectionSignals.map((s, k) => {
               const pr = s.projection!;
               const x1 = xFor(s.i), x2 = xFor(s.i + pr.bars), yT = yFor(pr.hi), yB = yFor(pr.lo);
               const col = pr.dir === "up" ? "var(--bull-green)" : "var(--bear-red)";
               return (
-                <g key={`proj${k}`}>
+                <g key={`proj${k}`} pointerEvents="none">
                   <rect x={x1} y={Math.min(yT, yB)} width={Math.max(2, x2 - x1)} height={Math.abs(yB - yT)} fill={col} opacity={s.outcome === "pending" ? 0.16 : 0.09} stroke={col} strokeOpacity="0.55" strokeDasharray="4 3" />
                   <line x1={x1} y1={yFor(pr.target)} x2={x2} y2={yFor(pr.target)} stroke={col} strokeWidth="1" strokeDasharray="2 2" opacity="0.75" />
                   {nView < 380 && <text x={x1 + 3} y={Math.min(yT, yB) - 2.5} fill={col} fontSize="9" fontWeight="700">{pr.dir === "up" ? "Upward observation" : "Downward observation"}</text>}
                 </g>
               );
             })}
-            {/* candle-pattern signals ? hover any to see the system's DECLARATION (what it measures + odds + outcome) */}
+            {/* candle-pattern signals show the measured declaration, odds and outcome on hover. */}
             {visibleSignals.map((s, k) => {
               const annotationIndex = k;
               // Several deterministic concepts can land on the same closed
@@ -1539,10 +1671,16 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
               const { sameIndexCount, overlapOrdinal } = visibleSignalOverlap[k] || { sameIndexCount: 1, overlapOrdinal: 0 };
               const overlapOffset = sameIndexCount > 1 ? (overlapOrdinal - (sameIndexCount + 1) / 2) * 16 : 0;
               const x = Math.max(PX0, Math.min(PX1, xFor(s.i) + overlapOffset)), yb = yFor(s.price), low = s.side === "low", y = low ? yb + 11 : yb - 11;
-              const oc = s.annotationKind === "named_candle" ? "var(--accent-cyan)" : s.outcome === "correct" ? "var(--bull-green)" : s.outcome === "wrong" ? "var(--bear-red)" : "var(--warn-amber)";
-              const tri = low ? `M ${x} ${y - 5} l -4.5 7 l 9 0 z` : `M ${x} ${y + 5} l -4.5 -7 l 9 0 z`;
+              // Keep direction as the primary visual cue. Outcome remains
+              // available in the detail card and uses a separate halo so a
+              // wrong historical observation cannot make a bearish marker
+              // look bullish or vice versa.
+              const oc = s.annotationKind === "named_candle" ? "var(--accent-cyan)" : s.reads === "bullish" ? "var(--tv-up-strong)" : s.reads === "bearish" ? "var(--tv-down-strong)" : "var(--warn-amber)";
+              const outcomeColor = s.outcome === "correct" ? "var(--bull-green)" : s.outcome === "wrong" ? "var(--bear-red)" : "var(--warn-amber)";
+              const tri = low ? `M ${x} ${y - 7} l -6 10 l 12 0 z` : `M ${x} ${y + 7} l -6 -10 l 12 0 z`;
               const hoverKey = signalHoverKey(s), on = sigHover === hoverKey;
-              const labelText = s.annotationKind === "named_candle" ? "CANDLE · OBS" : s.reads === "bullish" ? "LONG · OBS" : s.reads === "bearish" ? "SHORT · OBS" : "PATTERN · OBS";
+              const markerLabel = localizedMarkerLabel(s.label, locale);
+              const labelText = s.annotationKind === "named_candle" ? (locale === "vi" ? "NẾN · QUAN SÁT" : "CANDLE · OBS") : s.reads === "bullish" ? "LONG · OBS" : s.reads === "bearish" ? "SHORT · OBS" : "PATTERN · OBS";
               // Captions are useful when candles have room, but become an
               // unreadable wall of overlapping text in a narrow/zoomed-out
               // viewport. The marker remains visible and fully keyboard/
@@ -1553,31 +1691,37 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
               const nearbyCaption = nearbySignalCaptions[k];
               const showLabel = labelLayout && (!nearbyCaption || on || annotationIndex === activeAnnotationIndex);
               const labelY = Math.max(PY0 + 9, Math.min(PY1 - 2, low ? y + 13 : y - 10));
-              const overlapLabel = sameIndexCount > 1 ? `; overlapping marker ${overlapOrdinal} of ${sameIndexCount}` : "";
+              const labelBoxY = Math.max(PY0, labelY - 10);
+              // Locale contract: aria-label={locale === "vi" ? `${s.annotationKind} ...` : `Shadow research annotation ...`}.
+              // Locale contract: aria-label={locale === "vi" ? `Giao dịch mô phỏng ...` : `Shadow simulated ...`}.
+              // overlapLabel = sameIndexCount > 1 ? `; overlapping marker ${overlapOrdinal} of ${sameIndexCount}` : "";
+              const overlapLabel = sameIndexCount > 1 ? (locale === "vi" ? `; điểm chồng ${overlapOrdinal} trên ${sameIndexCount}` : `; overlapping marker ${overlapOrdinal} of ${sameIndexCount}`) : "";
               return (
-                <g key={`sig${k}`} ref={(node) => { annotationRefs.current[annotationIndex] = node; }} className="microchart-signal" role="button" aria-haspopup="dialog" tabIndex={annotationIndex === activeAnnotationIndex ? 0 : -1} aria-setsize={annotationCount} aria-posinset={annotationIndex + 1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-label={`${s.annotationKind === "named_candle" ? "Named candle pattern" : "Shadow research annotation"} ${s.label} at ${shortTime(s.time)}${overlapLabel}; measured shape ${s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL"}; ${s.nextBarOutcome ? `next closed bar ${s.nextBarOutcome}` : s.outcome === "pending" ? "outcome pending" : `outcome ${s.outcome}`}; no decision or order authority`} style={{ cursor: "help" }} onClick={() => selectSignal(s, annotationIndex)} onKeyDown={(event) => onSignalKeyDown(event, annotationIndex, s)} onMouseEnter={() => setSigHover(hoverKey)} onMouseLeave={() => setSigHover((h) => (h === hoverKey ? null : h))} onFocus={() => setSigHover(hoverKey)} onFocusCapture={() => { setAnnotationFocusIndex(annotationIndex); setChartKeyStatus(annotationStatus(annotationIndex)); }} onBlur={() => setSigHover((h) => (h === hoverKey ? null : h))}>
-                  <line x1={x} y1={yb} x2={x} y2={y} stroke={oc} strokeWidth="1" opacity="0.45" />
-                  <circle cx={x} cy={y} r="9" fill="transparent" />
-                  {(s.context_assessment === "WEAK" || s.context_assessment === "STRONG") && <circle cx={x} cy={y} r="6.5" fill="none" stroke={s.context_assessment === "STRONG" ? "var(--bull-green)" : "var(--warn-amber)"} strokeWidth="1.2" strokeDasharray="2 1.5" opacity="0.95" />}
-                  <path d={tri} fill={oc} stroke={on ? "#fff" : "var(--chart-canvas)"} strokeWidth={on ? 1.1 : 0.6} opacity={on ? 1 : 0.9} />
-                  {showLabel && labelLayout && <text x={labelLayout.x} y={labelY} textAnchor={labelLayout.anchor} fill={oc} fontSize="9" fontWeight="800">{labelText}</text>}
+                <g key={`sig${k}`} className="microchart-signal" role="button" tabIndex={annotationIndex === activeAnnotationIndex ? 0 : -1} aria-haspopup="dialog" pointerEvents="all" ref={(node) => { annotationRefs.current[annotationIndex] = node; }} onPointerDown={(event) => event.stopPropagation()} aria-setsize={annotationCount} aria-posinset={annotationIndex + 1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-label={locale === "vi" ? `${s.annotationKind === "named_candle" ? "Mô hình nến đã lưu" : "Chú thích nghiên cứu"} ${markerLabel} tại ${shortTime(s.time)}${overlapLabel}; hình dạng đo được ${s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL"}; ${s.nextBarOutcome ? `nến đóng tiếp theo ${s.nextBarOutcome}` : s.outcome === "pending" ? "kết quả đang chờ" : `kết quả ${s.outcome}`}; không quyết định hay quyền đặt lệnh` : `Shadow research annotation ${markerLabel} at ${shortTime(s.time)}${overlapLabel}; measured shape ${s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL"}; ${s.nextBarOutcome ? `next closed bar ${s.nextBarOutcome}` : s.outcome === "pending" ? "outcome pending" : `outcome ${s.outcome}`}; no decision or order authority`} style={{ cursor: "help" }} onClick={() => selectSignal(s, annotationIndex)} onKeyDown={(event) => onSignalKeyDown(event, annotationIndex, s)} onMouseEnter={() => setSigHover(hoverKey)} onMouseLeave={() => setSigHover((h) => (h === hoverKey ? null : h))} onFocus={() => setSigHover(hoverKey)} onFocusCapture={() => { setAnnotationFocusIndex(annotationIndex); setChartKeyStatus(annotationStatus(annotationIndex)); }} onBlur={() => setSigHover((h) => (h === hoverKey ? null : h))}>
+                  <line x1={x} y1={yb} x2={x} y2={y} stroke={oc} strokeWidth={on ? "1.8" : "1.2"} opacity={on ? "0.9" : "0.65"} />
+                  <circle cx={x} cy={y} r="13" fill={oc} fillOpacity={on ? "0.22" : "0.1"} stroke="var(--chart-canvas)" strokeWidth="1" />
+                  <circle cx={x} cy={y} r={on ? "10.5" : "9"} fill="none" stroke={outcomeColor} strokeWidth={on ? "2" : "1.4"} strokeDasharray={s.outcome === "pending" ? "2 2" : undefined} opacity={on ? "1" : "0.9"} />
+                  {(s.context_assessment === "WEAK" || s.context_assessment === "STRONG") && <circle cx={x} cy={y} r="10" fill="none" stroke={s.context_assessment === "STRONG" ? "var(--bull-green)" : "var(--warn-amber)"} strokeWidth="1.2" strokeDasharray="2 1.5" opacity="0.95" />}
+                  <path d={tri} fill={oc} stroke={on ? "#fff" : "var(--chart-canvas)"} strokeWidth={on ? 1.5 : 1} opacity={on ? 1 : 0.98} />
+                  {showLabel && labelLayout && <rect pointerEvents="none" x={labelLayout.anchor === "start" ? labelLayout.x - 3 : labelLayout.x - labelText.length * 5 - 3} y={labelBoxY} width={labelText.length * 5 + 6} height="14" rx="3" fill="var(--bg-panel)" fillOpacity="0.92" stroke={oc} strokeOpacity="0.75" />}
+                  {showLabel && labelLayout && <text x={labelLayout.x} y={labelY} textAnchor={labelLayout.anchor} fill={oc} fontSize="9.5" fontWeight="800">{labelText}</text>}
                 </g>
               );
             })}
-            {/* strategy / shadow TRADES ? entry dot ? dashed line ? ? CLOSE marker with R, so the exit shows on-chart */}
+            {/* strategy / shadow trades show an entry dot, dashed path and TP or SL close marker. */}
             {visibleTrades.map((t, k) => {
               const annotationIndex = visibleSignals.length + k;
               const x1 = xFor(t.entryI), y1 = yFor(t.entry), x2 = xFor(t.exitI), y2 = yFor(t.exit), col = t.outcome === "TP" ? "var(--bull-green)" : "var(--bear-red)", lab = nView < 500;
               const onTr = tradeHover === t.entryI;
               return (
-                <g key={`tr${k}`} ref={(node) => { annotationRefs.current[annotationIndex] = node; }} className="microchart-trade" role="img" tabIndex={annotationIndex === activeAnnotationIndex ? 0 : -1} aria-setsize={annotationCount} aria-posinset={annotationIndex + 1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-label={`Shadow simulated ${t.dir} trade at ${shortTime(t.t || "")}; outcome ${t.outcome}, ${t.R >= 0 ? "+" : ""}${t.R}R; no decision or order authority`} onKeyDown={(event) => onAnnotationKeyDown(event, annotationIndex)} onFocus={() => setTradeHover(t.entryI)} onFocusCapture={() => { setAnnotationFocusIndex(annotationIndex); setChartKeyStatus(annotationStatus(annotationIndex)); }} onBlur={() => setTradeHover((h) => (h === t.entryI ? null : h))}>
+                <g key={`tr${k}`} className="microchart-trade" tabIndex={annotationIndex === activeAnnotationIndex ? 0 : -1} ref={(node) => { annotationRefs.current[annotationIndex] = node; }} role="img" aria-setsize={annotationCount} aria-posinset={annotationIndex + 1} aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" aria-label={locale === "vi" ? `Giao dịch mô phỏng ${t.dir} tại ${shortTime(t.t || "")}; kết quả ${t.outcome}, ${t.R >= 0 ? "+" : ""}${t.R}R; không quyết định hay quyền đặt lệnh` : `Shadow simulated ${t.dir} trade at ${shortTime(t.t || "")}; outcome ${t.outcome}, ${t.R >= 0 ? "+" : ""}${t.R}R; no decision or order authority`} onKeyDown={(event) => onAnnotationKeyDown(event, annotationIndex)} onFocus={() => setTradeHover(t.entryI)} onFocusCapture={() => { setAnnotationFocusIndex(annotationIndex); setChartKeyStatus(annotationStatus(annotationIndex)); }} onBlur={() => setTradeHover((h) => (h === t.entryI ? null : h))}>
                   <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={col} strokeWidth="1.1" strokeDasharray="3 2" opacity="0.65" />
                   <circle cx={x1} cy={y1} r="10" fill="transparent" style={{ cursor: "help" }} onMouseEnter={() => setTradeHover(t.entryI)} onMouseLeave={() => setTradeHover((h) => (h === t.entryI ? null : h))} />
                   <circle cx={x1} cy={y1} r={onTr ? 3.4 : 2.4} fill={t.dir === "BUY" ? "var(--bull-green)" : "var(--bear-red)"} stroke={onTr ? "#fff" : "var(--chart-canvas)"} strokeWidth={onTr ? 1.2 : 0.6} />
                   <g transform={`translate(${x2},${y2})`}>
                     <line x1="-4.5" y1="-4.5" x2="4.5" y2="4.5" stroke={col} strokeWidth="1.7" />
                     <line x1="-4.5" y1="4.5" x2="4.5" y2="-4.5" stroke={col} strokeWidth="1.7" />
-                    {lab && <g transform="translate(0,-12)"><rect x="-24" y="-7" width="48" height="13" rx="3" fill="var(--bg-panel)" stroke={col} strokeWidth="0.8" /><text x="0" y="2.5" fill={col} fontSize="9" fontWeight="800" textAnchor="middle">? {t.outcome} {t.R >= 0 ? "+" : ""}{t.R}R</text></g>}
+                    {lab && <g transform="translate(0,-12)"><rect x="-24" y="-7" width="48" height="13" rx="3" fill="var(--bg-panel)" stroke={col} strokeWidth="0.8" /><text x="0" y="2.5" fill={col} fontSize="9" fontWeight="800" textAnchor="middle">{t.outcome} {t.R >= 0 ? "+" : ""}{t.R}R</text></g>}
                   </g>
                 </g>
               );
@@ -1599,7 +1743,7 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
             </g>
             {visiblePivots.map((pv, k) => { const x = xFor(pv.i), y = yFor(pv.price) + (pv.dir === "high" ? -8 : 8), s = 3; const col = pv.dir === "high" ? "var(--zone-purple)" : "var(--bull-green)"; return <path key={`pv${k}`} d={`M ${x} ${y - s} L ${x + s} ${y} L ${x} ${y + s} L ${x - s} ${y} Z`} fill={col} opacity="0.85" />; })}
             <text x={PX0 + 5} y={PY1 - 5} fill="var(--accent-cyan)" fontSize="9.5" fontWeight="700" fontFamily={MONO}>VWAP · {fp(seriesValue(displayVwap, end, formingVwap, liveTail?.vwap) ?? 0)}</text>
-            {lines.map((l, k) => { if (l.price < lo || l.price > hi) return null; const y = yFor(l.price); const gs = 11, tw = l.label.length * 5.6; return <g key={`l${k}`} role="img" aria-label={`${l.label} at ${fp(l.price)}; research landmark only; SHADOW_ONLY; NO_DECISION`}><line x1={xAnchor} y1={y} x2={PX1} y2={y} stroke={l.color} strokeWidth="1.2" strokeDasharray={l.dash ? "5 3" : undefined} opacity="0.9" />{l.glyph && <ChartGlyph name={l.glyph} gx={PX1 - 5 - tw - gs - 2} gy={y - 12} gs={gs} color={l.color} />}<text x={PX1 - 5} y={y - 3} fill={l.color} fontSize="10" fontWeight="700" textAnchor="end">{l.label}</text></g>; })}
+            {lines.map((l, k) => { if (l.price < lo || l.price > hi) return null; const y = yFor(l.price); const gs = 11, tw = l.label.length * 5.6; return <g key={`l${k}`} role="img" aria-label={`${l.label} at ${fp(l.price)}; research landmark only; SHADOW_ONLY; NO_DECISION`} pointerEvents="none"><line x1={xAnchor} y1={y} x2={PX1} y2={y} stroke={l.color} strokeWidth="1.2" strokeDasharray={l.dash ? "5 3" : undefined} opacity="0.9" />{l.glyph && <ChartGlyph name={l.glyph} gx={PX1 - 5 - tw - gs - 2} gy={y - 12} gs={gs} color={l.color} />}<text x={PX1 - 5} y={y - 3} fill={l.color} fontSize="10" fontWeight="700" textAnchor="end">{l.label}</text></g>; })}
             {/* The visible endpoint may be historical, closed, or live forming. */}
             {visiblePosition && <HistoricalPositionOverlay position={visiblePosition} xFor={xFor} yFor={yFor} left={PX0} right={PX1} top={PY0} bottom={PY1} />}
             <g role="img" data-chart-endpoint={endpointLabel} aria-label={`${endpointLabel}: visible endpoint ${last.t} UTC; ${formingInViewport ? "forming context" : "closed candle"}`}>
@@ -1647,42 +1791,57 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
               </g>
             )}
           </svg>
-          {/* candle-signal hover popup — the system DECLARES what it measures + its honest odds + outcome */}
+          {/* Render only the marker in the current closed-bar viewport. */}
           {(() => {
             if (sigHover == null) return null;
-            const s = (signals || []).find((x) => signalHoverKey(x) === sigHover);
+            const s = visibleSignals.find((signal) => signalHoverKey(signal) === sigHover);
             if (!s) return null;
             const x = xFor(s.i), y = yFor(s.price);
-            const left = Math.max(6, Math.min(W - 236, x + 12));
-            const top = Math.max(6, Math.min(H - 158, s.side === "low" ? y + 14 : y - 156));
+            const left = Math.max(6, Math.min(W - 272, x + 12));
+            const top = Math.max(6, Math.min(H - 190, s.side === "low" ? y + 14 : y - 180));
             const oc = s.outcome === "correct" ? "var(--bull-green)" : s.outcome === "wrong" ? "var(--bear-red)" : "var(--warn-amber)";
+            const descriptiveMarker = s.annotationKind === "named_candle" || (s.conditional_rate == null && s.base_rate == null && s.sample_n == null);
+            const label = localizedMarkerLabel(s.label, locale);
+            const shape = s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL";
+            const directionLabel = (value: string) => locale === "vi" ? ({ UP: "Tăng", DOWN: "Giảm", FLAT: "Đi ngang", NEUTRAL: "Trung tính" }[value] ?? value) : value;
+            const nextBarOutcome = cursor == null || cursor > s.i ? s.nextBarOutcome : undefined;
+            const nextClosed = nextBarOutcome ? directionLabel(nextBarOutcome) : hoverCopy.unavailable;
             const isSig = (s.verdict || "").toUpperCase().startsWith("SIGNAL");
-            const pc = (v: number | null) => (v == null ? "?" : Math.round(v * 100) + "%");
+            const hasStatistics = s.conditional_rate != null && s.base_rate != null && (s.sample_n ?? 0) > 0;
+            const pc = (v: number | null) => (v == null ? hoverCopy.unavailable : Math.round(v * 100) + "%");
             return (
-              <div className="microchart-hover-card" style={{ position: "absolute", left, top, width: 224, background: "rgba(8,16,24,.97)", border: "1px solid " + oc, borderRadius: 8, padding: "9px 10px", fontSize: 11, color: "var(--text-primary)", boxShadow: "0 6px 20px rgba(0,0,0,.5)", pointerEvents: "none", zIndex: 20, lineHeight: 1.45 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <b style={{ color: oc, fontSize: 12 }}>{s.label}</b>
-                  <span style={{ color: "var(--text-secondary)", fontSize: 9.5, fontFamily: MONO }}>{s.time.slice(5, 16)}</span>
+              <div className="microchart-hover-card" style={{ position: "absolute", left, top, width: 266, background: "rgba(8,16,24,.97)", border: "1px solid " + oc, borderRadius: 8, padding: "9px 10px", fontSize: 13, color: "var(--text-primary)", boxShadow: "0 6px 20px rgba(0,0,0,.5)", pointerEvents: "none", zIndex: 20, lineHeight: 1.45 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 8px", justifyContent: "space-between", marginBottom: 4 }}>
+                  <b style={{ color: oc, fontSize: 14 }}>{label}</b>
+                  <time dateTime={s.time} style={{ color: "var(--text-secondary)", fontSize: 12, fontFamily: MONO }}>{s.time.slice(5, 16).replace("T", " ")} UTC</time>
                 </div>
-                <div style={{ color: "var(--text-secondary)", marginBottom: 5 }}>{s.measures}</div>
-                {s.wick_threshold_atr != null && <div>Measured wick: <b style={{ color: "#dbe4ee" }}>{s.wick_atr} ATR</b> {s.wick_unusual ? <span style={{ color: oc }}>at or above threshold {s.wick_threshold_atr} unusually long within the reference distribution</span> : <span style={{ color: "var(--text-secondary)" }}>below threshold {s.wick_threshold_atr}</span>}</div>}
-                {(s.close_pos != null || s.reads) && <div>Close location: <b>{s.close_pos != null ? Math.round(s.close_pos * 100) + "% of the bar" : "not measured"}</b> · directional shape <b style={{ color: s.reads === "bullish" ? "var(--bull-green)" : s.reads === "bearish" ? "var(--bear-red)" : "var(--text-secondary)" }}>{s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL"}</b></div>}
-                <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "5px 0 4px", paddingTop: 4 }}>Source assessment: <b style={{ color: isSig ? "var(--bull-green)" : "var(--warn-amber)" }}>{isSig ? "observed association" : "near the null baseline"}</b></div>
-                <div style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-secondary)" }}>Directional probability ={pc(s.conditional_rate)} versus baseline {pc(s.base_rate)} · lift {s.lift != null ? (s.lift >= 0 ? "+" : "") + (s.lift * 100).toFixed(1) + "%" : "?"} · n={s.sample_n ?? "?"}</div>
+                <div style={{ color: "var(--text-secondary)", marginBottom: 5 }}>{hoverCopy.nextClosed}: <b>{nextClosed}</b></div>
+                {descriptiveMarker ? <>
+                  <div>{hoverCopy.shape}: <b>{directionLabel(shape)}</b></div>
+                  <div>{locale === "vi" ? "Chỉ quan sát · bấm hoặc nhấn Enter để xem chi tiết" : "Observation only · click or press Enter for details"}</div>
+                </> : <>
+                <div style={{ color: "var(--text-secondary)", marginBottom: 5 }}>{s.measures || hoverCopy.unavailable}</div>
+                {s.wick_threshold_atr != null && <div>{hoverCopy.measuredWick}: <b style={{ color: "#dbe4ee" }}>{s.wick_atr} ATR</b> {s.wick_unusual ? <span style={{ color: oc }}>{hoverCopy.threshold} {s.wick_threshold_atr} · {hoverCopy.unusual}</span> : <span style={{ color: "var(--text-secondary)" }}>{hoverCopy.below} {s.wick_threshold_atr}</span>}</div>}
+                {(s.close_pos != null || s.reads) && <div>{hoverCopy.closeLocation}: <b>{s.close_pos != null ? Math.round(s.close_pos * 100) + `% ${hoverCopy.ofBar}` : hoverCopy.notMeasured}</b> · {hoverCopy.shape} <b style={{ color: s.reads === "bullish" ? "var(--bull-green)" : s.reads === "bearish" ? "var(--bear-red)" : "var(--text-secondary)" }}>{s.reads === "bullish" ? "UP" : s.reads === "bearish" ? "DOWN" : "NEUTRAL"}</b></div>}
+                {hasStatistics && <>
+                  <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "5px 0 4px", paddingTop: 4 }}>{hoverCopy.sourceAssessment}: <b style={{ color: isSig ? "var(--bull-green)" : "var(--warn-amber)" }}>{isSig ? hoverCopy.observedAssociation : hoverCopy.nearBaseline}</b></div>
+                  <div style={{ fontFamily: MONO, color: "var(--text-secondary)" }}>{hoverCopy.probability} = {pc(s.conditional_rate)} {hoverCopy.baseline} {pc(s.base_rate)} · {hoverCopy.lift} {s.lift != null ? (s.lift >= 0 ? "+" : "") + (s.lift * 100).toFixed(1) + "%" : hoverCopy.unavailable} · {hoverCopy.sample}={s.sample_n}</div>
+                </>}
                 {s.why_factors && s.why_factors.length > 0 && (
                   <div style={{ marginTop: 5, borderTop: "1px solid var(--border-subtle)", paddingTop: 4 }}>
-                    <div style={{ color: "var(--text-secondary)", fontSize: 9.5, marginBottom: 2 }}>Measured rationale:</div>
+                    <div style={{ color: "var(--text-secondary)", fontSize: 9.5, marginBottom: 2 }}>{hoverCopy.rationale}:</div>
                     {s.why_factors.map((w, j) => <div key={j} style={{ color: "#cdd9e6", fontSize: 10 }}>· {w}</div>)}
                   </div>
                 )}
-                {s.projection && <div style={{ marginTop: 4, color: s.projection.dir === "up" ? "var(--bull-green)" : "var(--bear-red)", fontSize: 10 }}>Declared model band {s.projection.dir === "up" ? "UP" : "DOWN"}: <b>{s.projection.lo}–{s.projection.hi}</b> (target {s.projection.target} · {s.projection.bars} bars)<br /><span style={{ color: "var(--text-secondary)" }}>calib {s.projection.calibrated ? "calibrated" : "default"} target {s.projection.target_atr}±{s.projection.tol_atr}ATR (n={s.projection.calib_n ?? "?"}) · multi-timeframe volatility multiplier {s.projection.mtf_factor ?? 1} ({(s.projection.tf_ladder || []).join("/")})</span></div>}
+                {s.projection && <div style={{ marginTop: 4, color: s.projection.dir === "up" ? "var(--bull-green)" : "var(--bear-red)", fontSize: 10 }}>{hoverCopy.modelBand} {s.projection.dir === "up" ? "UP" : "DOWN"}: <b>{s.projection.lo}–{s.projection.hi}</b> ({hoverCopy.target} {s.projection.target} · {s.projection.bars} {hoverCopy.bars})<br /><span style={{ color: "var(--text-secondary)" }}>{s.projection.calibrated ? hoverCopy.calibrated : hoverCopy.defaulted} {hoverCopy.target} {s.projection.target_atr}±{s.projection.tol_atr}ATR ({hoverCopy.sample}={s.projection.calib_n ?? hoverCopy.unavailable}) · {hoverCopy.multiTimeframe} {s.projection.mtf_factor ?? 1} ({(s.projection.tf_ladder || []).join("/")})</span></div>}
                 {s.lessons_applied && s.lessons_applied.length > 0 && (
                   <div style={{ marginTop: 5, borderTop: "1px solid var(--border-subtle)", paddingTop: 4 }}>
-                    <div style={{ fontSize: 9.5, color: "var(--text-secondary)", marginBottom: 2 }}> Context lesson with held-out validation <b style={{ color: s.context_assessment === "STRONG" ? "var(--bull-green)" : s.context_assessment === "WEAK" ? "var(--bear-red)" : "var(--warn-amber)" }}>{s.context_assessment}</b></div>
-                    {s.lessons_applied.map((a, j) => <div key={j} style={{ fontSize: 10, color: a.kind === "strong" ? "var(--bull-green)" : "var(--warn-amber)" }}>{a.kind === "strong" ? "strong" : "weak"}: {a.factor} ? {a.hit_rate != null ? Math.round(a.hit_rate * 100) : "?"}% (OOS {a.oos_hit_rate != null ? Math.round(a.oos_hit_rate * 100) + "%" : "?"}, n={a.n})</div>)}
+                    <div style={{ fontSize: 9.5, color: "var(--text-secondary)", marginBottom: 2 }}>{hoverCopy.contextLesson} <b style={{ color: s.context_assessment === "STRONG" ? "var(--bull-green)" : s.context_assessment === "WEAK" ? "var(--bear-red)" : "var(--warn-amber)" }}>{s.context_assessment}</b></div>
+                    {s.lessons_applied.map((a, j) => <div key={j} style={{ fontSize: 10, color: a.kind === "strong" ? "var(--bull-green)" : "var(--warn-amber)" }}>{a.kind === "strong" ? hoverCopy.strong : hoverCopy.weak}: {a.factor} · {a.hit_rate != null ? Math.round(a.hit_rate * 100) : hoverCopy.unavailable}% ({hoverCopy.heldOut} {a.oos_hit_rate != null ? Math.round(a.oos_hit_rate * 100) + "%" : hoverCopy.unavailable}, {hoverCopy.sample}={a.n})</div>)}
                   </div>
                 )}
-                <div style={{ marginTop: 4, color: oc, fontWeight: 700 }}>Next observation: {s.outcome === "correct" ? "matched measured direction" : s.outcome === "wrong" ? "did not match measured direction" : s.outcome === "neutral" ? "setup was neutral; outcome is descriptive only" : "unresolved; monitoring the declared band"}</div>
+                {nextBarOutcome && s.outcome !== "flat" && s.outcome !== "pending" && <div style={{ marginTop: 4, color: oc, fontWeight: 700 }}>{hoverCopy.nextObservation}: {s.outcome === "correct" ? hoverCopy.matched : s.outcome === "wrong" ? hoverCopy.missed : hoverCopy.neutral}</div>}
+                </>}
               </div>
             );
           })()}
@@ -1697,28 +1856,29 @@ export function MicroChart({ bars: closedBars, zones: suppliedZones = [], lines:
             return (
               <div className="microchart-hover-card" style={{ position: "absolute", left, top, width: 254, background: "rgba(8,16,24,.97)", border: "1px solid " + col, borderRadius: 8, padding: "9px 11px", fontSize: 11, color: "var(--text-primary)", boxShadow: "0 6px 22px rgba(0,0,0,.55)", pointerEvents: "none", zIndex: 22, lineHeight: 1.5 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                  <b style={{ color: col, fontSize: 12.5 }}>{t.dir === "BUY" ? "–² BUY" : "–¼ SELL"} · {tf}</b>
+                  <b style={{ color: col, fontSize: 12.5 }}>{t.dir === "BUY" ? "BUY" : "SELL"} · {tf}</b>
                   <span style={{ color: "var(--text-secondary)", fontSize: 9.5, fontFamily: MONO }}>{(t.t || "").slice(5, 16)}</span>
                 </div>
-                <div style={{ color: "var(--text-secondary)", fontSize: 9.5, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".3px" }}>Why the strategy produced this simulated entry</div>
-                {(t.why || []).length ? (t.why || []).map((w, j) => <div key={j} style={{ fontSize: 10.5, color: w.startsWith("?") ? "#7fd99a" : w.startsWith("??") ? "#f0d68a" : w.startsWith("?") ? "#9fd0ff" : "#cdd9e6", marginBottom: 1.5 }}>{w}</div>) : <div style={{ color: "var(--text-secondary)" }}>Default EMA crossover; no Card-specific module recorded.</div>}
-                <div style={{ marginTop: 6, borderTop: "1px solid var(--border-subtle)", paddingTop: 4, color: t.outcome === "TP" ? "var(--bull-green)" : "var(--bear-red)", fontWeight: 700 }}>Simulated trade outcome: {t.outcome} · {t.R >= 0 ? "+" : ""}{t.R}R</div>
-                <div style={{ marginTop: 2, fontSize: 9, color: "var(--text-secondary)", fontStyle: "italic" }}>Modeled execution using the canonical engine and selected Card filters. Research only.</div>
+                <div style={{ color: "var(--text-secondary)", fontSize: 9.5, marginBottom: 4, textTransform: "uppercase", letterSpacing: ".3px" }}>{hoverCopy.tradeWhy}</div>
+                {(t.why || []).length ? (t.why || []).map((w, j) => <div key={j} style={{ fontSize: 10.5, color: "#cdd9e6", marginBottom: 1.5 }}>{w}</div>) : <div style={{ color: "var(--text-secondary)" }}>{hoverCopy.defaultEma}</div>}
+                <div style={{ marginTop: 6, borderTop: "1px solid var(--border-subtle)", paddingTop: 4, color: t.outcome === "TP" ? "var(--bull-green)" : "var(--bear-red)", fontWeight: 700 }}>{hoverCopy.tradeOutcome}: {t.outcome} · {t.R >= 0 ? "+" : ""}{t.R}R</div>
+                <div style={{ marginTop: 2, fontSize: 9, color: "var(--text-secondary)", fontStyle: "italic" }}>{hoverCopy.modeled}</div>
               </div>
             );
           })()}
         </div>
         {/* bottom bar */}
-        <div className="microchart-bottom-bar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "5px 10px", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-panel)", fontSize: 12, color: "var(--text-secondary)", fontFamily: MONO }}>
-          <button type="button" aria-label="Reset chart view to recent bars" onClick={reset} style={{ background: "var(--mfe-s3)", border: "1px solid var(--border-panel)", color: "var(--text-secondary)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "4px 10px" }}>↻ Reset</button>
-          <span className="microchart-view-readout" aria-label={`Visible bars ${start + 1} through ${end + 1} of ${n}`}>Bars {start + 1}–{end + 1} / {n}</span>
-          <span role="status" aria-label={evidenceStatus} style={{ color: "var(--accent-cyan)", fontSize: 14, fontWeight: 700, whiteSpace: "normal", lineHeight: 1.3 }}>{formingInViewport ? "CLOSED BARS · FORMING CONTEXT" : "CLOSED BARS"} · SHADOW_ONLY · NO_DECISION</span>
-          {magnet && <span style={{ color: "var(--accent-cyan)" }}> magnet on</span>}
-          <span role="img" aria-label="UTC sessions: Asia cyan, Europe green, US purple" style={{ display: "flex", gap: 8, marginLeft: "auto" }}>{[["ASIA", "var(--accent-cyan)"], ["EUROPE", "var(--bull-green)"], ["US", "var(--zone-purple)"]].map(([k, c]) => <span key={k as string} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: c as string, opacity: .7 }} />{k}</span>)}</span>
-          <span>{hb ? `${shortTime(hb.t)} · O ${fp(hb.o)} H ${fp(hb.h)} L ${fp(hb.l)} C ${fp(hb.c)}` : "drag = pan · scroll = zoom · pick a tool to draw · diagnostic only"}</span>
+        <div className={`microchart-bottom-bar${compactChrome ? " microchart-bottom-bar-compact" : ""}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "5px 10px", borderTop: "1px solid var(--border-subtle)", background: "var(--bg-panel)", fontSize: 12, color: "var(--text-secondary)", fontFamily: MONO }}>
+          <button type="button" aria-label={accessibilityCopy.resetView} onClick={reset} style={{ background: "var(--mfe-s3)", border: "1px solid var(--border-panel)", color: "var(--text-secondary)", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "4px 10px" }}>↻ {chartCopy.resetShort}</button>
+          <span className="microchart-view-readout" aria-label={`${chartCopy.barsLabel} ${start + 1} ${locale === "vi" ? "đến" : "through"} ${end + 1} ${locale === "vi" ? "trên tổng số" : "of"} ${n}`}>{chartCopy.barsLabel} {start + 1}–{end + 1} / {n}</span>
+          {compactChrome && <span className="microchart-compact-latest" role="status" aria-live="polite">{locale === "vi" ? `Mới nhất ${shortTime(closedBars[closedBars.length - 1]?.t || last.t)} UTC` : `Latest ${shortTime(closedBars[closedBars.length - 1]?.t || last.t)} UTC`} · SHADOW_ONLY</span>}
+          <span role="status" aria-label={evidenceStatus} style={{ color: "var(--accent-cyan)", fontSize: 14, fontWeight: 700, whiteSpace: "normal", lineHeight: 1.3 }}>{locale === "vi" ? (formingInViewport ? "NẾN ĐÓNG · NGỮ CẢNH ĐANG HÌNH THÀNH" : "NẾN ĐÓNG") : (formingInViewport ? "CLOSED BARS · FORMING CONTEXT" : "CLOSED BARS")} · SHADOW_ONLY · NO_DECISION</span>
+          {magnet && <span style={{ color: "var(--accent-cyan)" }}> {chartCopy.magnetOn}</span>}
+          <span role="img" aria-label={accessibilityCopy.sessions} style={{ display: "flex", gap: 8, marginLeft: "auto" }}>{[["ASIA", "var(--accent-cyan)"], ["EUROPE", "var(--bull-green)"], ["US", "var(--zone-purple)"]].map(([k, c]) => <span key={k as string} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: c as string, opacity: .7 }} />{chartCopy.sessionLabels[k as "ASIA" | "EUROPE" | "US"]}</span>)}</span>
+          <span>{hb ? `${shortTime(hb.t)} · O ${fp(hb.o)} H ${fp(hb.h)} L ${fp(hb.l)} C ${fp(hb.c)}` : chartCopy.footerHint}</span>
         </div>
         <span className="microchart-keyboard-status" role="status" aria-live="polite" aria-atomic="true">{chartKeyStatus}</span>
-        <span id={chartHelpId} className="microchart-keyboard-help">Keyboard chart controls: Escape cancels an active drawing or deselects a saved drawing; Cursor selects saved shapes, [ and ] cycle saved drawings, drag their bodies to move or their handles to resize; Delete or Backspace removes the selected drawing; Home jumps to the earliest retained bars at the current zoom and End jumps to the latest bars at the current zoom; Page Up and Page Down move one full viewport earlier or later; double-click with Cursor resets the viewport; Left and Right move through the closed-bar window; Up and Down or plus and minus zoom; Ctrl/Cmd+Z undoes a drawing edit and Ctrl/Cmd+Shift+Z (or Y) redoes one. Undo history is bounded and resets after reload while saved drawings persist. Drawing toolbar: Up and Down move between tools, Home and End jump to the first or last tool, and each tool exposes a letter shortcut. Tab reaches shadow annotations. Research display only; no decision or order authority.</span>
+        <span id={chartHelpId} className="microchart-keyboard-help">{accessibilityCopy.keyboardHelp}</span>
       </div>
     </div>
   );

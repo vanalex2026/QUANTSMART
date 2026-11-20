@@ -1,0 +1,110 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(new URL("../mfe_ux_lab/cockpit/package.json", import.meta.url));
+const { build } = require("esbuild"), ts = require("typescript");
+const bundle = await build({ stdin: { contents: 'export * from "./src/lib/focusedSnapshot.ts"; export * from "./src/lib/namedCandleHistory.ts"; export * from "./src/lib/namedCandleKnowledge.ts";', resolveDir: fileURLToPath(new URL("../mfe_ux_lab/cockpit/", import.meta.url)), loader: "ts" }, bundle: true, format: "cjs", platform: "node", write: false, logLevel: "silent" });
+const mod = { exports: {} };
+new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, mod, mod.exports);
+const lib = mod.exports;
+const bars = Array.from({ length: 80 }, (_, i) => ({ i, t: new Date(Date.UTC(2026, 0, 1, 0, i * 5)).toISOString(), o: 100, h: 101, l: 99, c: 100, closed: true }));
+const identity = { pattern: "DOJI", time: bars[30].t };
+const baseline = { schema: lib.FOCUSED_SNAPSHOT_SCHEMA, symbol: "XAUUSD", timeframe: "M5", authority: lib.FOCUSED_SNAPSHOT_AUTHORITY };
+const saved = { ...baseline, inspection: { named_candle_focus: identity, chart_focus_index: 8, chart_focus_time: bars[8].t, preview_occurrence_index: 0, preview_occurrence: { index: 8, time: bars[8].t }, analogue_match_index: 0, analogue_match_time: bars[8].t } };
+assert.equal(lib.parseFocusedSnapshot(saved).ok, true);
+assert.equal(lib.parseFocusedSnapshot(baseline).ok, true, "old schema-1 snapshots still parse without named focus");
+assert.equal(lib.parseFocusedSnapshot({ ...baseline, inspection: { named_candle_focus: null } }).ok, true);
+for (const bad of [[], "DOJI", 1, {}, { ...identity, pattern: "made-up" }, { ...identity, time: "2026-01-01T02:30:00" }, { ...identity, time: "2026-01-01T02:30:01Z" }, { ...identity, time: "not-a-date" }, { ...identity, time: "2099-01-01T00:00:00Z" }]) {
+  assert.equal(lib.parseFocusedSnapshot({ ...baseline, inspection: { named_candle_focus: bad } }).ok, false, `invalid durable identity rejected: ${JSON.stringify(bad)}`);
+}
+assert.equal(lib.parseFocusedSnapshot({ ...saved, authority: "LIVE_APPLY" }).ok, false);
+const offsetIdentity = { ...identity, time: identity.time.replace("Z", "+00:00") };
+assert.equal(lib.parseFocusedSnapshot({ ...baseline, inspection: { named_candle_focus: offsetIdentity } }).ok, true);
+assert.equal(lib.resolveNamedCandleFocus(bars, offsetIdentity).i, 30);
+assert.equal(lib.resolveNamedCandleFocus(bars.slice(10), identity).i, 20, "retention shifts re-anchor by UTC without a saved ordinal");
+assert.equal(lib.resolveNamedCandleFocus(bars.slice(31), identity), null, "expired identities never choose a replacement");
+assert.equal(lib.resolveNamedCandleFocus(bars, { ...identity, time: bars[0].t }).i, 0, "first retained candle is supported");
+assert.equal(lib.resolveNamedCandleFocus(bars, { ...identity, pattern: "BULLISH_MARUBOZU" }), null, "a saved name cannot relabel a different candle shape");
+assert.equal(lib.resolveNamedCandleFocus(bars.map((bar, i) => i === 30 ? { ...bar, closed: false } : bar), identity), null);
+assert.equal(lib.resolveNamedCandleFocus(bars.filter((_, i) => i !== 25), identity), null, "a new setup gap invalidates the saved focus");
+const changedFuture = bars.map((bar, i) => i === 31 ? { ...bar, c: 100.5 } : bar);
+assert.equal(lib.resolveNamedCandleFocus(bars, identity).nextBar, "FLAT");
+assert.equal(lib.resolveNamedCandleFocus(changedFuture, identity).nextBar, "UP", "outcomes are recomputed from current tape, never imported");
+
+// Execute the real UI callbacks and exported inspection literal, rather than a
+// test-only copy of snapshot state transitions.
+const source = readFileSync(new URL("../mfe_ux_lab/cockpit/src/pages/Microscope.tsx", import.meta.url), "utf8");
+const ast = ts.createSourceFile("Microscope.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const functions = new Map(), effects = [];
+let inspectionExpression;
+function visit(node) {
+  if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node.getText(ast));
+  if (ts.isVariableDeclaration(node) && node.initializer && ts.isArrowFunction(node.initializer)) functions.set(node.name.getText(ast), `const ${node.name.getText(ast)} = ${node.initializer.getText(ast)};`);
+  if (ts.isCallExpression(node) && node.expression.getText(ast) === "useEffect") effects.push(node.arguments[0].getText(ast));
+  if (ts.isPropertyAssignment(node) && node.name.getText(ast) === "inspection") inspectionExpression = node.initializer.getText(ast);
+  ts.forEachChild(node, visit);
+}
+visit(ast);
+const compile = (expression, env) => new Function("env", `with(env){${ts.transpileModule(`const value = ${expression};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText} return value;}`)(env);
+const callback = (name, env) => new Function("env", `with(env){${ts.transpileModule(functions.get(name), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText} return ${name};}`)(env);
+const state = {};
+const env = { ...lib, detectorBars: bars, requestedSymbol: "XAUUSD", tf: "M5", selectedKnowledgePattern: null, priceAction: { evidence: {} }, m5Atlas: { matches: [{ time: bars[8].t, patterns: ["DOJI"] }] }, getPriceActionKnowledge: () => null,
+  pendingAnalogueMatchRef: { current: null }, pendingOccurrenceSelection: { current: null }, analogueFocusTimeRef: { current: bars[8].t }, previewOccurrenceTimeRef: { current: bars[8].t },
+};
+for (const key of ["ChartFocusRequest", "NamedHistoryChartSelection", "InspectedSignal", "ShowHistoricalTape", "AnalogueFamilyFilter", "AnaloguePatternFilter", "AnaloguePreviewIndex", "SnapshotViewportRestore", "SnapshotDrawingsRestore", "KnowledgePattern", "PreviewOccurrenceIndex", "HistoricalChartFocus", "SnapshotStatus"]) env[`set${key}`] = value => { state[key] = value; };
+env.namedCandlePatternToSignal = callback("namedCandlePatternToSignal", env);
+const toSignal = callback("namedCandleHistoryToSignal", env);
+callback("applyFocusedSnapshot", env)(JSON.stringify(saved));
+assert.deepEqual(state.NamedHistoryChartSelection, { pattern: identity.pattern, occurrence: { time: identity.time } });
+assert.equal(state.HistoricalChartFocus, null, "named focus suppresses an unrelated legacy chart ordinal");
+assert.equal(state.PreviewOccurrenceIndex, -1, "named focus cannot inherit a PDF preview ordinal");
+assert.equal(env.analogueFocusTimeRef.current, null, "analogue selection must not own restored named focus");
+assert.equal(state.InspectedSignal, null, "resume closes stale inspector preview");
+assert.match(state.SnapshotStatus, /DOJI/);
+assert.equal(toSignal(identity.pattern, state.NamedHistoryChartSelection.occurrence, bars).i, 30);
+const untouched = JSON.stringify(state);
+callback("applyFocusedSnapshot", env)(JSON.stringify({ ...saved, symbol: "EURUSD" }));
+assert.deepEqual(state.NamedHistoryChartSelection, { pattern: identity.pattern, occurrence: { time: identity.time } }, "wrong-context imports do not clear valid focus");
+assert.notEqual(JSON.stringify(state), untouched, "wrong-context import reports the error");
+callback("applyFocusedSnapshot", env)(JSON.stringify(baseline));
+assert.equal(state.NamedHistoryChartSelection, null, "old snapshots clear independent named focus");
+env.detectorBars = [];
+callback("applyFocusedSnapshot", env)(JSON.stringify(saved));
+assert.ok(state.NamedHistoryChartSelection, "a valid identity survives import while bars are loading");
+const cleanup = effects.find(effect => effect.includes("Named candle focus unavailable"));
+assert.ok(cleanup);
+compile(cleanup, { ...env, namedHistoryChartSelection: state.NamedHistoryChartSelection, focusedNamedHistorySignal: null })();
+assert.ok(state.NamedHistoryChartSelection, "empty loading tape must not expire a pending identity");
+env.detectorBars = bars.slice(31);
+compile(cleanup, { ...env, namedHistoryChartSelection: state.NamedHistoryChartSelection, focusedNamedHistorySignal: null })();
+assert.equal(state.NamedHistoryChartSelection, null); assert.match(state.SnapshotStatus, /unavailable/);
+assert.equal(toSignal(identity.pattern, { time: bars[0].t }, bars).i, 0);
+assert.equal(toSignal("BULLISH_MARUBOZU", identity, bars), null);
+const exported = compile(inspectionExpression, { focusedNamedHistorySignal: { time: identity.time }, namedHistoryChartSelection: { pattern: identity.pattern, occurrence: identity }, showHistoricalTape: true, historicalChartFocus: null, detectorBars: bars, microChartViewport: { current: null }, savedViewport: null, previewOccurrence: null, nearestAnalogue: null, analoguePatternFilter: null, analogueFamilyFilter: null });
+assert.deepEqual(exported.named_candle_focus, identity);
+assert.equal(lib.parseFocusedSnapshot({ ...baseline, inspection: exported }).ok, true, "the real export resumes under the same schema");
+assert.match(source, /snapshot: focusedBookmarkSnapshot\(snapshot\)/, "bookmarks compact the same export contract");
+assert.match(source, /applyFocusedSnapshot\(JSON.stringify\(record.snapshot\)\)/, "bookmark restore uses validated snapshot apply");
+const largeExport = { ...saved, selected_concept_evidence: { occurrences: 40000, hitRate: 0.5, outcomes: { up: 20000, down: 20000, flat: 0 }, history: Array.from({ length: 40000 }, (_, i) => ({ i, time: bars[30].t, score: 0.75, direction: "UP", nextBar: "DOWN" })) }, drawings: [] };
+assert.ok(JSON.stringify(largeExport).length > 2 * 1024 * 1024, "reproduce the real bookmark size failure with a full-history snapshot");
+const compact = lib.focusedBookmarkSnapshot(largeExport);
+assert.ok(JSON.stringify(compact).length < 5000, "ordinary history cannot exhaust bookmark storage");
+assert.equal(compact.selected_concept_evidence.history, undefined);
+assert.equal(compact.selected_concept_evidence.history_retained_count, 40000);
+assert.equal(compact.selected_concept_evidence.hitRate, 0.5);
+assert.deepEqual(compact.inspection.named_candle_focus, identity);
+assert.equal(largeExport.selected_concept_evidence.history.length, 40000, "compaction never mutates the full JSON export");
+assert.equal(lib.parseFocusedSnapshot(compact).ok, true);
+const fullTapeExport = { ...largeExport, selected_concept_evidence: { ...largeExport.selected_concept_evidence, history: Array.from({ length: 65000 }, (_, i) => ({ i, time: bars[30].t, score: 0.75, direction: "UP", nextBar: "DOWN" })) } };
+assert.ok(JSON.stringify(fullTapeExport, null, 2).length > 8 * 1024 * 1024, "reproduce a whitespace-inflated export that could not be imported");
+let downloadBlob, copied;
+const exportEnv = { PRICE_ACTION_DETECTOR_CONCEPT_COUNT: 13, buildFocusedSnapshot: () => fullTapeExport, Blob, URL: { createObjectURL(blob) { downloadBlob = blob; return "blob:test"; }, revokeObjectURL() {} }, document: { createElement: () => ({ click() {} }) }, requestedSymbol: "XAUUSD", tf: "M5", replayBars: bars, patternEvidenceRows: [], setSnapshotStatus() {}, async writePromptText(value) { copied = value; } };
+callback("exportFocusedSnapshot", exportEnv)();
+const download = await downloadBlob.text();
+assert.equal(lib.parseFocusedSnapshot(download).ok, true, "the full download resumes within the existing bounded import size");
+assert.equal(JSON.parse(download).selected_concept_evidence.history.length, 65000, "compact JSON never drops historical evidence rows");
+await callback("copyFocusedSnapshot", exportEnv)();
+assert.equal(lib.parseFocusedSnapshot(copied).ok, true);
+console.log("NAMED CANDLE SNAPSHOT PASS: durable UTC identity, strict parsing, causal revalidation, retention/index0, unavailable/loading states and real UI export/resume.");

@@ -1,0 +1,24 @@
+{
+  "audit": "realtime-pdf-causal-boundary-audit",
+  "schema": "quantsmart.realtime-pdf-causal-boundary-audit/1",
+  "result": "PASS",
+  "scope": "Real XAUUSD M5 PDF verification causal-boundary evidence",
+  "source_receipt": "artifacts/real-xauusd-m5-pdf-signal-verification.json",
+  "source_script": "scripts/verify-real-xauusd-pdf-signals.mjs",
+  "selected_index": 4931,
+  "feed_last_index": 4999,
+  "rows_after_selected_boundary": 68,
+  "existing_future_mutation": "Mutates the first row after selected causal boundary",
+  "first_excluded_row_mutation_exercised": true,
+  "synthetic_immediate_next_row_check": {
+    "selected_index": 96,
+    "mutated_index": 97,
+    "result_unchanged": true,
+    "observation_count": 23
+  },
+  "finding": "The real-feed receipt mutates the first row after selectedTime and confirms that the selected causal result is unchanged.",
+  "required_follow_up": null,
+  "authority": "SHADOW_ONLY / NO_DECISION / live_apply_allowed=false",
+  "live_apply_allowed": false,
+  "outcomes": "WITHHELD"
+}

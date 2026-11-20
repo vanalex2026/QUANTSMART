@@ -2,11 +2,16 @@
 import time
 import unittest
 from unittest.mock import patch
-from fastapi.testclient import TestClient
 from types import SimpleNamespace
-from bridge.mt5_bridge import TerminalService, ConnectInput, create_app
-from bridge.demo_execution import DemoExecution, DemoPreviewInput, DemoSubmitInput
-from test_mt5_bridge import FakeSDK
+try:
+    from fastapi.testclient import TestClient
+    from bridge.mt5_bridge import TerminalService, ConnectInput, create_app
+    from bridge.demo_execution import DemoExecution, DemoPreviewInput, DemoSubmitInput
+    from test_mt5_bridge import FakeSDK
+except ModuleNotFoundError as error:
+    if error.name not in {"fastapi", "pydantic", "starlette", "httpx"}:
+        raise
+    raise unittest.SkipTest(f"optional bridge dependency unavailable: {error.name}")
 
 class DemoSDK(FakeSDK):
     COPY_TICKS_ALL=0

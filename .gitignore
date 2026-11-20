@@ -4,6 +4,7 @@
 !/.env.example
 !/package.json
 !/README.md
+!/AGENTS.md
 !/LICENSE
 !/RELEASE_MANIFEST.json
 !/NOTICE
@@ -24,6 +25,13 @@
 !/docs/TUTORIALS.md
 !/docs/INSTALLATION.md
 !/docs/INSTALLER_VALIDATION.md
+!/docs/PRICE_ACTION_KNOWLEDGE_MAP.md
+!/docs/PRICE_ACTION_IMPLEMENTATION_GAPS.md
+!/docs/price_action_knowledge_map.json
+!/docs/price_action_page_index.json
+!/docs/AI_SESSION_STATE.md
+!/docs/PROJECT_STATUS.md
+!/docs/independent_xauusd_source_probe.json
 !/docs/QUANT_METHODOLOGY_AUDIT.md
 !/docs/QUANT_AUDIT_RESULTS.json
 !/docs/QUANT_CHRONOLOGY_AUDIT.md
@@ -45,6 +53,7 @@
 !/requirements-dev.txt
 !/scripts/
 !/scripts/*.mjs
+!/scripts/extract_price_action_pdf.py
 !/bridge/
 !/bridge/*.py
 !/bridge/tests/

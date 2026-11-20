@@ -28,6 +28,7 @@ function Gauge({ v, color, W, H }: { v: number; color: string; W: number; H: num
 }
 
 export function BlockViz({ block, series, bars, W = 186, H = 46 }: { block: L1PrimitiveBlockSpec; series: number[] | null; bars: OhlcBar[]; W?: number; H?: number }) {
+  if (!bars.length) return <div role="status" aria-label="Historical OHLC preview unavailable" style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center", color: TK.muted, fontSize: 10, background: "var(--mfe-s3)", borderRadius: 6 }}>No historical OHLC bars loaded; preview unavailable</div>;
   if (!series) return <div style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center", color: TK.muted, fontSize: 10, background: "var(--mfe-s3)", borderRadius: 6 }}> Control node evaluated by the state machine</div>;
   const last = series.length ? series[series.length - 1] : 0;
   const ratio = block.outputs[0].range === "[0,1]";

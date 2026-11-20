@@ -54,6 +54,25 @@ assert.deepEqual(
   "Weekend execution must not be mapped to a Friday candle",
 );
 assert.deepEqual(brokerDealMarkers(bars, [deal], "EURUSD", 60), []);
+// The focused chart commonly has no broker deals. It must return before
+// parsing every retained candle timestamp on that path.
+const emptyTape = Array.from({ length: 20000 }, (_, i) => ({
+  t: new Date(Date.UTC(2026, 0, 1, 0, i * 5)).toISOString(),
+}));
+const nativeDateParse = Date.parse;
+let emptyParseCalls = 0;
+Date.parse = (value) => {
+  emptyParseCalls += 1;
+  return nativeDateParse(value);
+};
+try {
+  assert.deepEqual(brokerDealMarkers(emptyTape, [], "XAUUSD", 60), []);
+  assert.deepEqual(brokerDealMarkers(emptyTape, [deal], "EURUSD", 60), []);
+  assert.deepEqual(brokerDealMarkers(emptyTape, [{ ...deal, price: NaN }], "XAUUSD", 60), []);
+} finally {
+  Date.parse = nativeDateParse;
+}
+assert.equal(emptyParseCalls, 0, "empty, unrelated, or invalid broker evidence must not parse the retained tape");
 assert.equal(
   brokerDealMarkers(bars, [{ ...deal, entryKind: "ENTRY" }], "XAUUSD", 60)[0]
     .label,

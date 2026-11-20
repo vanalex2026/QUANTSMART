@@ -23,6 +23,7 @@
     "test:product:with-data": "node scripts/test.mjs --with-data",
     "package:portable": "node scripts/package-portable.mjs",
     "test:quant": "node tests/quant-methodology.test.mjs && node tests/research-trials.test.mjs && node tests/quant-chronology.test.mjs && node tests/execution-contract.test.mjs && node tests/strategy-attribution.test.mjs",
-    "test:portable": "node tests/portable-entry.test.mjs"
+    "test:portable": "node tests/portable-entry.test.mjs",
+    "verify:real-detectors": "node scripts/verify-real-xauusd-detectors.mjs"
   }
 }

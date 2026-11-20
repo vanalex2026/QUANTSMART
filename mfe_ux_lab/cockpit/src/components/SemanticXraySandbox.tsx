@@ -6,6 +6,7 @@ import { Glyph } from "./ui/Glyph.tsx";
 import { BlockPlayground } from "./BlockPlayground.tsx";
 import { ModuleIntentSandbox } from "./ModuleIntentSandbox.tsx";
 import { loadSimOhlc } from "../adapters/loadSimOhlc.ts";
+import { getActiveSymbol, SYMBOL_CHANGED_EVENT } from "../lib/activeSymbolStore.ts";
 import type { OhlcBar } from "../adapters/loadOhlcReplayChart.ts";
 import type { L1PrimitiveBlockSpec } from "../lib/blocks/blockTypes.ts";
 import type { CustomModule } from "../lib/customModule.ts";
@@ -82,8 +83,8 @@ function ImpactMatrix({ projection }: { projection: SemanticProjection }) {
   );
 }
 
-function RuntimeEvidence({ target, projection, bars }: { target: SemanticSandboxTarget; projection: SemanticProjection; bars: OhlcBar[] }) {
-  if (target.kind === "BLOCK") return bars.length ? <BlockPlayground block={target.block} bars={bars} W={560} H={120} /> : <div className="pmut">Loading completed M15 observations…</div>;
+function RuntimeEvidence({ target, projection, bars, symbol, barsState }: { target: SemanticSandboxTarget; projection: SemanticProjection; bars: OhlcBar[]; symbol: string; barsState: "loading" | "ready" | "unavailable" }) {
+  if (target.kind === "BLOCK") return bars.length ? <BlockPlayground block={target.block} bars={bars} W={560} H={120} /> : <div role="status" aria-live="polite" className="pmut">{barsState === "loading" ? `Loading ${symbol} M15 closed bars…` : `No ${symbol} M15 closed-bar snapshot is available; runtime preview remains unavailable.`}</div>;
   if (target.kind === "CUSTOM_MODULE") return <ModuleIntentSandbox draft={target.module} valid />;
   if (target.kind === "ENGINE_MODULE") return (
     <div style={{ border: "1px dashed #4a3b22", borderRadius: 8, padding: 10, background: "#17130c" }}>
@@ -104,7 +105,10 @@ function RuntimeEvidence({ target, projection, bars }: { target: SemanticSandbox
 export function SemanticXraySandbox({ target, onClose }: { target: SemanticSandboxTarget; onClose: () => void }) {
   const projection = useMemo(() => projectionOf(target), [target]);
   const [bars, setBars] = useState<OhlcBar[]>([]);
-  useEffect(() => { let live = true; loadSimOhlc("M15", false).then((d) => { if (live) setBars((d?.bars || []).slice(-320)); }); return () => { live = false; }; }, []);
+  const [barsState, setBarsState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [symbol, setSymbol] = useState(getActiveSymbol);
+  useEffect(() => { const sync = () => setSymbol(getActiveSymbol()); window.addEventListener(SYMBOL_CHANGED_EVENT, sync); return () => window.removeEventListener(SYMBOL_CHANGED_EVENT, sync); }, []);
+  useEffect(() => { let live = true; setBarsState("loading"); loadSimOhlc("M15", false, symbol).then((d) => { if (!live) return; const next = (d?.bars || []).slice(-320); setBars(next); setBarsState(next.length ? "ready" : "unavailable"); }).catch(() => { if (live) { setBars([]); setBarsState("unavailable"); } }); return () => { live = false; }; }, [symbol]);
   useEffect(() => { const close = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [onClose]);
   const traceColor = projection.traceStatus === "TRACE_UNAVAILABLE" ? TK.orange : projection.traceStatus === "ARTIFACT_METRICS" ? TK.green : TK.cyan;
 
@@ -124,7 +128,7 @@ export function SemanticXraySandbox({ target, onClose }: { target: SemanticSandb
               <div style={{ fontSize: 11.5, color: TK.text2, margin: "3px 0 10px" }}>{projection.summary}</div>
               <div className="pc" style={{ margin: 0 }}><div className="pc-h">Source, mechanism and effect</div><FlowMap projection={projection} /></div>
               {projection.kind === "STRATEGY_CARD" && <div className="pc" style={{ margin: "10px 0 0" }}><div className="pc-h">Module authority matrix</div><ImpactMatrix projection={projection} /></div>}
-              <div className="pc" style={{ margin: "10px 0 0" }}><div className="pc-h">Runtime evidence <span className="mut">Only source-backed observations are displayed. Missing traces remain unavailable.</span></div><RuntimeEvidence target={target} projection={projection} bars={bars} /></div>
+              <div className="pc" style={{ margin: "10px 0 0" }}><div className="pc-h">Runtime evidence <span className="mut">{barsState === "ready" ? `${symbol} M15 local replay snapshot · ${bars.length} closed bars` : barsState === "loading" ? `Loading ${symbol} M15 closed bars…` : `No ${symbol} M15 closed-bar snapshot available`}. Only source-backed observations are displayed. Missing traces remain unavailable.</span></div><RuntimeEvidence target={target} projection={projection} bars={bars} symbol={symbol} barsState={barsState} /></div>
             </div>
             <div>
               <div className="pc" style={{ margin: 0 }}>

@@ -1,0 +1,10 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const chart = fs.readFileSync("mfe_ux_lab/cockpit/src/components/MicroChart.tsx", "utf8");
+const microscope = fs.readFileSync("mfe_ux_lab/cockpit/src/pages/Microscope.tsx", "utf8");
+assert.match(chart, /researchProvenance\?: string/);
+assert.match(chart, /Closed-bar provenance: \$\{researchProvenance\}/);
+assert.match(chart, /micro-research-provenance/);
+assert.match(microscope, /const chartOverlayProvenance = `closed \$\{latestClosedBarUtc \|\| "unavailable"\} UTC \| source \$\{chartEvidenceSource\}/);
+assert.match(microscope, /researchProvenance=\{focused \? (?:chartOverlayProvenance|localizedChartOverlayProvenance) : undefined\}/);
+console.log("FOCUSED OVERLAY PROVENANCE PASS");

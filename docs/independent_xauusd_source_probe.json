@@ -1,0 +1,49 @@
+{
+  "schema": "quantsmart.independent-xauusd-source-probe/1",
+  "status": "SOURCE_VERIFIED_NO_HOLDOUT",
+  "audited_at_utc": "2026-11-18T12:57:09Z",
+  "provider": "Dukascopy historical tick archive",
+  "instrument": "XAUUSD",
+  "source_uri": "https://datafeed.dukascopy.com/datafeed/XAUUSD/2024/01/01/00h_ticks.bi5",
+  "source_sha256": "8e89e5ae21774d0809258ad285b40f79130be99ac6e304ab38e1c7ed33fe3c5a",
+  "source_bytes": 12749,
+  "source_file_format": "BI5 LZMA-compressed 20-byte tick records",
+  "source_hour_utc": "2024-01-01T00:00:00Z",
+  "source_record_count": 3038,
+  "source_tick_window_utc": {
+    "first": "2024-01-01T00:00:00.080Z",
+    "last": "2024-01-01T00:59:59.404Z"
+  },
+  "derived_timeframe": "M5",
+  "derivation": {
+    "price_basis": "MID",
+    "formula": "(bid + ask) / 2 from each source tick",
+    "bar_rule": "UTC five-minute bins; open is first tick midpoint, high/low are extrema, close is last tick midpoint",
+    "closed_bar_rule": "A bin is eligible only after its source hour and following boundary are available",
+    "gap_policy": "No repair or interpolation; incomplete bins remain unavailable",
+    "outcome_labels": false
+  },
+  "raw_source_retention": {
+    "local_probe_path": "artifacts/dukascopy_probe.bi5",
+    "retained_bytes": true,
+    "note": "The raw probe is ignored build evidence and is not bundled as product history. Re-fetch and compare source_sha256 before deriving bars."
+  },
+  "holdout_contract": {
+    "partition": "CANDIDATE_ONLY",
+    "selection_lock": "UNSET",
+    "outcome_definition": "UNSET",
+    "execution_model": "UNAVAILABLE",
+    "ready_for_evaluation": false
+  },
+  "authority": {
+    "focused_chart": "SHADOW_ONLY",
+    "decision": "NO_DECISION",
+    "live_apply_allowed": false
+  },
+  "verification_notes": [
+    "The public endpoint returned a compressed XAUUSD tick file whose path and decoded record window identify the instrument and UTC hour.",
+    "This probe is external to the account-scoped MT5 cache and is therefore a candidate independent source.",
+    "It is not a sealed holdout because no frozen selection lock or independently keyed outcome labels are supplied.",
+    "No OHLC rows, fills, win rates or directional labels are included in this manifest."
+  ]
+}

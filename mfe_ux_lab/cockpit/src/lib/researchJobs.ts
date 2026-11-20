@@ -55,14 +55,20 @@ export function runCalibrationJob(symbol: string, signal?: AbortSignal) { return
 export function runDetachedBacktest(bars: OhlcBar[], card: unknown, options: RealisticBacktestOptions, mode:"design"|"m1"="design") { return runResearchJob<ResearchBacktest>({ kind: "backtest", mode, bars, card, options, storage: researchStorage() }); }
 
 // No synchronous simulator call in React render. Any previous result is hidden as soon as inputs change.
-export function useResearchBacktest(bars: OhlcBar[] | null | undefined, card: unknown, options: RealisticBacktestOptions, mode: "m1" | "design" = "design", historical = false, source?: "Replay"|"Live"|"CSV", stage?: "Y10"|"M6"|"M1", imported?:{id:string;windowTf:string}) {
-  const settings = JSON.stringify({ card, options, storage: researchStorage() });
+export function useResearchBacktest(bars: OhlcBar[] | null | undefined, card: unknown, options: RealisticBacktestOptions, mode: "m1" | "design" = "design", historical = false, source?: "Replay"|"Live"|"CSV", stage?: "Y10"|"M6"|"M1", imported?:{id:string;windowTf:string}, enabled = true) {
+  // Keep idle consumers (including the focused M5 home, which has no Card)
+  // from touching legacy research storage. Card runs still snapshot the same
+  // storage payload once a valid tape is available.
+  const settings = useMemo(() => {
+    if (!enabled || !card || !bars || bars.length <= 60) return "";
+    return JSON.stringify({ card, options, storage: researchStorage() });
+  }, [enabled, bars, card, options]);
   const request = useMemo<ResearchRequest | null>(() => {
-    if (!card || !bars || bars.length <= 60) return null;
+    if (!enabled || !card || !bars || bars.length <= 60) return null;
     const { card: frozenCard, options: frozenOptions, storage } = JSON.parse(settings);
     const dataset = historical ? { symbol: frozenOptions.symbol || "XAUUSD", tf: mode === "m1" ? "M1" : getCardRuntimeConfig(frozenCard).design_tf, from: bars[0].t, to: bars[bars.length - 1].t, expectedCount: bars.length, first: JSON.stringify(bars[0]), last: JSON.stringify(bars[bars.length - 1]) } : undefined;
     return { kind: "backtest", ...(imported?{importId:imported.id,windowTf:imported.windowTf,from:bars[0].t,to:bars[bars.length-1].t}:{}), mode, source: source || (historical ? "Replay" : undefined), stage, card: frozenCard, options: frozenOptions, storage, ...(imported?{}:dataset ? { dataset } : { bars }) };
-  }, [bars, settings, mode, historical, source, stage, imported?.id,imported?.windowTf]);
+  }, [enabled, bars, settings, mode, historical, source, stage, imported?.id,imported?.windowTf]);
   const [state, setState] = useState<{ request: ResearchRequest | null; result: ResearchBacktest | null; error: string | null }>({ request: null, result: null, error: null });
   useEffect(() => {
     if (!request) return;

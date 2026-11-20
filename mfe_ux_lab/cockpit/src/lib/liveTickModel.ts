@@ -17,17 +17,20 @@ export type LiveTickFreshness = "live" | "stale";
 const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const timeframeMinutes: Record<string, number> = { M1: 1, M5: 5, M15: 15, M30: 30, H1: 60, H4: 240, D1: 1440, W1: 10080 };
-function bar(v: unknown): LiveTickBar | null {
+function bar(v: unknown, expected: { symbol?: string; tf?: string } = {}): LiveTickBar | null {
   if (!object(v) || typeof v.time !== "string" || !Number.isFinite(Date.parse(v.time)) || !finite(v.open) || !finite(v.high) || !finite(v.low) || !finite(v.close) || v.low > Math.min(v.open, v.close) || v.high < Math.max(v.open, v.close)) return null;
+  if (expected.symbol && v.symbol !== undefined && v.symbol !== expected.symbol) return null;
+  if (expected.tf && v.timeframe !== undefined && v.timeframe !== expected.tf) return null;
   return { i: 0, t: v.time, o: v.open, h: v.high, l: v.low, c: v.close, r: "N", ...(finite(v.tick_volume) ? { tick_volume: v.tick_volume } : {}), ...(finite(v.spread) ? { spread: v.spread } : {}) };
 }
 export function parseLiveTickFrame(value: unknown, expected: { symbol?: string; tf?: string; generation?: number } = {}): LiveTickFrame | null {
   if (!object(value) || value.ok !== true || typeof value.cursor !== "string" || !finite(value.generation) || typeof value.broker_symbol !== "string" || !value.broker_symbol.trim() || !Array.isArray(value.ticks) || value.ticks.length > 8192) return null;
-  // The bridge includes canonical identity when available. Keep older test or
-  // proxy payloads compatible while rejecting a late packet for another route.
+  // The live feed always supplies the expected canonical identity. Keep the
+  // standalone parser compatible with older fixtures when no expectation is
+  // supplied, while rejecting unscoped packets at the feed boundary.
   if (expected.generation !== undefined && value.generation !== expected.generation) return null;
-  if (typeof value.symbol === "string" && expected.symbol && value.symbol !== expected.symbol) return null;
-  if (typeof value.timeframe === "string" && expected.tf && value.timeframe !== expected.tf) return null;
+  if (expected.symbol && value.symbol !== expected.symbol) return null;
+  if (expected.tf && value.timeframe !== expected.tf) return null;
   const cursor = /^(\d{1,12}):(\d{1,16}):(\d{1,8})$/.exec(value.cursor);
   if (!cursor || Number(cursor[1]) !== value.generation) return null;
   if (value.authority !== undefined && value.authority !== "SHADOW_ONLY") return null;
@@ -38,7 +41,7 @@ export function parseLiveTickFrame(value: unknown, expected: { symbol?: string; 
     if (!object(tick) || !finite(tick.time_msc) || tick.time_msc <= 0 || !finite(tick.bid) || !finite(tick.ask) || !finite(tick.last) || !finite(tick.flags) || tick.bid <= 0 || tick.ask < tick.bid) return null;
     ticks.push({ time_msc: tick.time_msc, bid: tick.bid, ask: tick.ask, last: tick.last, flags: tick.flags });
   }
-  const forming = bar(value.bar), closed = bar(value.closed_bar);
+  const forming = bar(value.bar, expected), closed = bar(value.closed_bar, expected);
   if (value.bar && !forming || value.closed_bar && !closed) return null;
   const tf = expected.tf ?? (typeof value.timeframe === "string" ? value.timeframe : undefined);
   const periodMs = tf && timeframeMinutes[tf] ? timeframeMinutes[tf] * 60_000 : null;
@@ -79,14 +82,18 @@ export function latestLiveTick(frame: LiveTickFrame | null): LiveTick | null {
 }
 // Presentation only. Never mutate the closed-bar tape consumed by research jobs.
 export function withFormingBar(closed: OhlcBar[], frame: LiveTickFrame | null): OhlcBar[] {
-  if (!frame?.bar || !closed.length) return closed;
+  // A rollover packet can contain the newly closed bar before the next
+  // forming candle is available. Keep that closed row visible in the chart.
+  if (!frame || !closed.length) return closed;
   const result = closed.slice();
   for (const next of [frame.closed_bar, frame.bar]) {
     if (!next) continue;
     const tail = result[result.length - 1];
     const t = Date.parse(next.t), end = Date.parse(tail.t);
     if (t > end) result.push({ ...next, i: tail.i + 1 });
-    else if (t === end && next === frame.bar) result[result.length - 1] = { ...next, i: tail.i };
+    // The retained tape is the closed-bar authority. A delayed or stale
+    // forming packet may reuse its newest timestamp, but it must never
+    // overwrite the promoted closed row in the chart presentation.
   }
   return result;
 }

@@ -67,6 +67,39 @@ async function run() { try {
     const source={importId:imported.metadata.id,symbol:imported.metadata.symbol,tf:request.timeframe||imported.metadata.tf,sourceHash:dataHash,availableBars:allCount,evaluatedBars:bars.length,from:bars[0].t,to:bars[bars.length-1].t};
     parentPort.postMessage({result:{bars,allSeries:evalGraphAll(request.graph,bars),source,gates,warnings:imported.metadata.warnings},provenance:{dataHash,bars:bars.length}});return;
   }
+  if (request.kind === 'detector' && request.analysis === 'price_action') {
+    const { detectM5PriceAction } = await import('../src/lib/priceActionDetector.ts');
+    const detector = detectM5PriceAction(bars, { ...request.options, symbol: 'XAUUSD' });
+    const resultHash = createHash('sha256').update(JSON.stringify(detector)).digest('hex');
+    const provenance = {
+      dataHash,
+      tape_hash: dataHash,
+      bars: bars.length,
+      symbol: 'XAUUSD',
+      timeframe: 'M5',
+      closed_bar_provenance: 'CLOSED_UTC_M5',
+      forming_bar_included: false,
+      canonical_scope: 'BROWSER_SUPPLIED_BARS_TRANSITIONAL',
+      canonical_scope_pending: true,
+      schema: 'quantsmart.research.price-action/1',
+      result_hash: resultHash,
+      authority: 'SHADOW_ONLY / NO_DECISION',
+      live_apply_allowed: false,
+    };
+    parentPort.postMessage({
+      result: {
+        ...detector,
+        schema: 'quantsmart.research.price-action/1',
+        operation: 'price_action',
+        result_hash: resultHash,
+        provenance,
+        authority: 'SHADOW_ONLY / NO_DECISION',
+        live_apply_allowed: false,
+      },
+      provenance,
+    });
+    return;
+  }
   const totalBars=bars?.length;
   if(request.kind==='market')bars=bars.slice(-Math.min(5000,Math.max(61,request.count||600)));
   if (!Array.isArray(bars) || bars.length < 61 || bars.length > 750000) throw new Error('INSUFFICIENT_OR_EXCESSIVE_DATA');

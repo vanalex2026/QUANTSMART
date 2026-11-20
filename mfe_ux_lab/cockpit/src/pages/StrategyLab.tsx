@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getActiveSymbol } from "../lib/activeSymbolStore.ts";
 import "./cotrade.css";
 import "./product.css";
+// Strategy Lab owns the forensic fx/cockpit chrome; keep it out of focused home startup.
+import "../owner.css";
 import { loadSimOhlc } from "../adapters/loadSimOhlc.ts";
 import type { OhlcBar } from "../adapters/loadOhlcReplayChart.ts";
 import { RealismPanel } from "../components/RealismPanel.tsx";

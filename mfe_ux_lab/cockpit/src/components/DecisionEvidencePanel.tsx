@@ -61,7 +61,7 @@ function EntryEvaluationEvidence({
           <option value="RUN_HALTED">Simulation halted</option>
         </select>
       </label>
-      <div className="csv-import-preview">
+      <div className="csv-import-preview" role="region" tabIndex={0} aria-label="Scrollable entry evaluation evidence">
         <table>
           <caption>
             Recorded entry branches · {rows.length.toLocaleString()} matching
@@ -77,7 +77,7 @@ function EntryEvaluationEvidence({
           <tbody>
             {rows.slice(page * 25, (page + 1) * 25).map((row) => (
               <tr key={row.evaluationId}>
-                <td>{row.at}</td>
+                <th scope="row">{row.at}</th>
                 <td>{row.outcome}</td>
                 <td>
                   <strong>{row.code}</strong>
@@ -367,7 +367,7 @@ export function DecisionEvidencePanel({
               </a>
             </p>
           )}
-          <div className="csv-import-preview">
+          <div className="csv-import-preview" role="region" tabIndex={0} aria-label="Scrollable candidate decision evidence">
             <table>
               <caption>
                 Observed candidate decisions and joined outcomes
@@ -386,7 +386,7 @@ export function DecisionEvidencePanel({
                   .slice(page * 25, (page + 1) * 25)
                   .map((row) => (
                     <tr key={row.observationId}>
-                      <td>{row.signalTime}</td>
+                      <th scope="row">{row.signalTime}</th>
                       <td>
                         {row.direction === "BUY"
                           ? "Long research scenario"

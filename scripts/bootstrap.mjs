@@ -28,6 +28,13 @@ function pythonInstalled(env){for(const [command,args] of pythonCandidates(env))
 export function bridgePythonPath(root=ROOT,platform=process.platform){return join(root,'.venv-mfe',platform==='win32'?'Scripts':'bin',platform==='win32'?'python.exe':'python');}
 export async function listening(port){return new Promise(resolve=>{const socket=net.createConnection({host:'127.0.0.1',port});socket.setTimeout(800);socket.once('connect',()=>{socket.destroy();resolve(true);});socket.once('error',()=>resolve(false));socket.once('timeout',()=>{socket.destroy();resolve(false);});});}
 async function ready(url,identity,child){for(let i=0;i<120;i++){if(child?.exitCode!==null&&child?.exitCode!==undefined)throw new Error('A local service exited before becoming ready.');try{const response=await fetch(url,{signal:AbortSignal.timeout(1000)});if(response.ok){const data=await response.json();if(identity(data))return data;}}catch{}await new Promise(r=>setTimeout(r,250));}throw new Error('Local service startup timed out.');}
+async function occupiedBridgeReason(port){
+ try{
+  const response=await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(800)});
+  const health=await response.json();
+  return health?.service==='mfe-mt5-readonly' && health?.history_contract_version===2 ? 'BRIDGE_PORT_IN_USE' : 'BRIDGE_CONTRACT_MISMATCH';
+ }catch{return 'BRIDGE_PORT_IN_USE';}
+}
 function openBrowser(url){const [command,args]=process.platform==='win32'?['rundll32.exe',['url.dll,FileProtocolHandler',url]]:process.platform==='darwin'?['open',[url]]:['xdg-open',[url]];const child=spawn(command,args,{stdio:'ignore',detached:true,windowsHide:true});child.on('error',()=>console.log(`Open ${url} in your browser.`));child.unref();}
 
 export async function bootstrap(args=process.argv.slice(2)){
@@ -63,7 +70,7 @@ export async function bootstrap(args=process.argv.slice(2)){
   const prepared=await prepareInstallation({root:ROOT,config,settings,args,run});
   let {bridgeEnabled,venvPython,disabledReason}=prepared;
   if(args.includes('--setup-only')){console.log('Setup complete. Start with npm start (or start.bat). Use npm run mfe:doctor for optional capability details.');return;}
-  if(bridgeEnabled&&await listening(config.bridgePort)){bridgeEnabled=false;disabledReason='BRIDGE_PORT_IN_USE';console.warn(`Bridge port ${config.bridgePort} is occupied. Existing service preserved; historical mode remains available. Choose --bridge-port to enable MT5.`);}
+  if(bridgeEnabled&&await listening(config.bridgePort)){bridgeEnabled=false;disabledReason=await occupiedBridgeReason(config.bridgePort);console.warn(`Bridge port ${config.bridgePort} is occupied (${disabledReason}). Existing service preserved; historical mode remains available. Choose --bridge-port to enable MT5.`);}
   const runtimeEnv={...process.env,MFE_ENABLE_MANUAL_DEMO:settings.MFE_ENABLE_MANUAL_DEMO||'false',MFE_ENABLE_CARD_DEMO:settings.MFE_ENABLE_CARD_DEMO||'false',MFE_MT5_SERVER_TIMEZONE:settings.MFE_MT5_SERVER_TIMEZONE||'UTC',MFE_BRIDGE_PORT:String(config.bridgePort),MFE_BRIDGE_DISABLED_REASON:disabledReason,MFE_BRIDGE_TOKEN:bridgeEnabled?randomBytes(32).toString('hex'):''};
   if(bridgeEnabled){const bridge=run(venvPython,[join(ROOT,'bridge','mt5_bridge.py')],{env:runtimeEnv,long:true});await ready(`http://127.0.0.1:${config.bridgePort}/health`,d=>d.service==='mfe-mt5-readonly',bridge);console.log('Read-only MT5 bridge ready. Open MT5, then choose Auto-Attach in QUANTSMART.');}
   let frontend;

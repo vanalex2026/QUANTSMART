@@ -9,6 +9,8 @@ performance.
 - Frontend TypeScript checks and a production build.
 - Launcher, loopback proxy, tick-stream, display-clock, research-job ownership,
   workspace-merge and responsive canvas lifecycle tests.
+- Route-aware workspace error-boundary coverage is part of the default unit lane,
+  with a runner registration regression preventing accidental omission.
 - 28 Python bridge and manual-Demo tests using injected SDK fixtures, including
   rejection of Real accounts, changed-account previews and duplicate submissions.
 - A live Windows MT5 Demo attachment to XM, without entering an account password.
@@ -24,6 +26,11 @@ performance.
   constants matched the previous release in 42 changed source files. Six 5,000-bar
   H1/M15 strategy cases retained identical simulator outputs after excluding
   explanatory text and run timestamps.
+- The focused XAUUSD M5 chart range regression renders a 250,000-value tape range
+  through iterative aggregation; the chart no longer spreads a large history tape
+  into `Math.min`/`Math.max`, avoiding a startup stack overflow.
+- Microscope analogue and pattern previews use the same stack-safe range aggregation
+  when they receive a full focused M5 tape.
 
 The live connection check observed 14 stream packets during approximately four
 seconds. This is a bounded observation, not a latency benchmark or a guarantee of

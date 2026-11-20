@@ -122,15 +122,16 @@ export function TriggerCoefTuner() {
         </div>
       </div>
 
-      <div className="coef-table-wrap">
-        <table className="coef-table">
+      <div className="coef-table-wrap" role="region" tabIndex={0} aria-label="Scrollable trigger calibration evidence">
+        <table className="coef-table" aria-label="Trigger calibration evidence">
+          <caption className="coef-table-caption">Editable trigger weights with observed reliability and calibration provenance.</caption>
           <thead>
             <tr>
-              <th>Trigger</th>
-              <th>Source</th>
-              <th>Weight (W)</th>
-              <th>Reliability</th>
-              <th>Calibration</th>
+              <th scope="col">Trigger</th>
+              <th scope="col">Source</th>
+              <th scope="col">Weight (W)</th>
+              <th scope="col">Reliability</th>
+              <th scope="col">Calibration</th>
             </tr>
           </thead>
           <tbody>
@@ -144,7 +145,7 @@ export function TriggerCoefTuner() {
                     : "warn";
               return (
                 <tr key={key}>
-                  <td style={{ color: "#F8FAFC", fontWeight: 500 }}>{label}</td>
+                  <th scope="row" className="coef-name">{label}</th>
                   <td>
                     <span className={`coef-source ${profile[key] ? "override" : ""}`}>
                       {profile[key] ? "OVERRIDE" : "DEFAULT"}

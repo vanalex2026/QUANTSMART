@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const app = fileURLToPath(new URL("../mfe_ux_lab/cockpit", import.meta.url));
+const require = createRequire(new URL("../mfe_ux_lab/cockpit/package.json", import.meta.url));
+const { build } = require("esbuild");
+const built = await build({ stdin: { contents: "export * from './src/lib/patternContextSelectionCensus.ts';", resolveDir: app }, bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
+const { patternContextSelectionCensus } = await import("data:text/javascript;base64," + Buffer.from(built.outputFiles[0].text).toString("base64"));
+const epoch = Date.parse("2026-11-10T00:00:00.000Z"), time = i => new Date(epoch + i * 300_000).toISOString();
+const bars = Array.from({ length: 100 }, (_, i) => ({ t: time(i), o: 100 + i * .05, h: 101 + i * .05, l: 99 + i * .05, c: 100.4 + i * .05, closed: true }));
+const setup = (i, direction = "UP") => ({ kind: "PATTERN_BREAK", version: "pattern-break/1", direction, signalBarTime: time(i - 1), confirmationTime: time(i), contextStart: time(i - 20), contextBoundary: 100, breakoutLevel: 101, protectionReference: 99, buildupTimes: [time(i - 4), time(i - 3), time(i - 2)], boundaryTouchTimes: [time(i - 4), time(i - 3), time(i - 2)], originalBreakTime: time(i - 1) });
+const occurrences = [60, 61, 62, 63, 64].map((i, n) => ({ i, time: time(i), direction: n === 2 ? "DOWN" : n === 3 ? "NEUTRAL" : "UP", nextBar: n === 1 || n === 2 ? "DOWN" : "UP", score: n === 1 ? .5 : .8, setup: setup(i, n === 2 ? "DOWN" : "UP"), futurePrice: 999999 }));
+const result = patternContextSelectionCensus(bars, occurrences, "pattern_break");
+assert.equal(result.state, "MEASURED"); assert.equal(result.totalOccurrences, 5); assert.equal(result.measuredOccurrences, 2); assert.equal(result.skippedOccurrences, 3); assert.equal(result.rows.length, 5); assert.equal(result.authority, "SHADOW_ONLY / NO_DECISION"); assert.equal(result.live_apply_allowed, false); assert.ok(Object.values(result.buckets).some(bucket => bucket.occurrences > 0));
+assert.equal(patternContextSelectionCensus(bars, occurrences, "pattern_break", false).reason, "UNVERIFIED_CURRENT_EVIDENCE");
+const gap = bars.filter((_, index) => index !== 59); assert.ok(patternContextSelectionCensus(gap, occurrences, "pattern_break").measuredOccurrences === 0, "gap cannot be crossed by causal context");
+console.log("PATTERN CONTEXT SELECTION CENSUS PASS: causal buckets, explicit skips and no future OHLC leakage.");

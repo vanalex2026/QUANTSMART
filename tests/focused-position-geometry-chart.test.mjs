@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const source = fs.readFileSync(new URL("../mfe_ux_lab/cockpit/src/pages/Microscope.tsx", import.meta.url), "utf8");
+assert.match(source, /const priceActionPositionLines: CChartLine\[\] = focused && priceActionDirection/, "focused LONG/SHORT geometry lines must be computed only after fail-closed gates");
+assert.match(source, /const visLines: CChartLine\[\] = \[\s*\.\.\.priceActionPositionLines/, "the shared visible-line list must contain position geometry");
+assert.equal((source.match(/lines=\{\[\.\.\.visLines, \.\.\.priceActionPositionLines, \.\.\.brokerEvidence\.lines\]\}/g) || []).length, 0, "position geometry must not be appended twice after entering the shared visible-line list");
+assert.match(source, /lines=\{\[\.\.\.visLines, \.\.\.brokerEvidence\.lines\]\}/, "MicroChart must receive the deduplicated visible-line list");
+assert.match(source, /`\$\{side\} ENTRY \/ RESEARCH`/, "position geometry must label the descriptive side");
+assert.match(source, /descriptive only/, "position geometry must retain descriptive-only authority copy");
+const zones = source.slice(source.indexOf("const priceActionPositionZones"), source.indexOf("const visZones"));
+assert.equal((zones.match(/showLabel: false/g) || []).length, 3, "position zones must leave their three captions to the corresponding position lines");
+const chart = fs.readFileSync(new URL("../mfe_ux_lab/cockpit/src/components/MicroChart.tsx", import.meta.url), "utf8");
+assert.match(chart, /zoneLayout !== "wide" && z.showLabel !== false/, "compact layout must honor per-zone caption visibility without hiding bands");
+assert.match(chart, /if \(z.showLabel === false\) return null/, "wide labels must honor the same visibility contract");
+assert.doesNotMatch(source, /const showCurrentPositionLines = !focusedHistoricalSignal/, "a retained historical selection must not prevent Reset restoring current geometry");
+console.log("FOCUSED POSITION GEOMETRY PASS: gated LONG/SHORT research lines reach the chart with descriptive authority labels.");

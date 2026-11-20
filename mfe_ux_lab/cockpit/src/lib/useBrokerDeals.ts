@@ -5,7 +5,7 @@ import {
   brokerPositionLines,
   type BrokerPosition,
 } from "./brokerDealMarkers.ts";
-import type { CChartLine } from "../components/CockpitChart.tsx";
+import type { CChartLine } from "../components/chartPrimitives.tsx";
 export function useBrokerDeals(symbol: string, enabled: boolean) {
   const generation = useTerminalGeneration();
   const [state, setState] = useState<{

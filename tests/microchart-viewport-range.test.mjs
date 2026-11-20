@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+const require = createRequire(new URL("../mfe_ux_lab/cockpit/package.json", import.meta.url));
+const { build } = require("esbuild");
+const bundled = await build({ entryPoints: [fileURLToPath(new URL("../mfe_ux_lab/cockpit/src/lib/microChartViewport.ts", import.meta.url))], bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent" });
+const { sliceSortedByIndex } = await import("data:text/javascript;base64," + Buffer.from(bundled.outputFiles[0].text).toString("base64"));
+const rows = Array.from({ length: 141247 }, (_, i) => ({ i, id: i }));
+assert.deepEqual(sliceSortedByIndex(rows, 100, 104), rows.slice(100, 105));
+assert.deepEqual(sliceSortedByIndex(rows, -10, 2), rows.slice(0, 3));
+assert.deepEqual(sliceSortedByIndex(rows, rows.length - 2, rows.length + 10), rows.slice(-2));
+assert.deepEqual(sliceSortedByIndex(rows, 500, 499), []);
+assert.deepEqual(sliceSortedByIndex([], 0, 1), []);
+const duplicateRows = [{ i: 4, id: "a" }, { i: 4, id: "b" }, { i: 7, id: "c" }];
+assert.deepEqual(sliceSortedByIndex(duplicateRows, 4, 4), duplicateRows.slice(0, 2), "duplicate candle markers preserve source order");
+console.log("MICROCHART VIEWPORT RANGE PASS: binary inclusive slices preserve boundaries and duplicate marker order.");

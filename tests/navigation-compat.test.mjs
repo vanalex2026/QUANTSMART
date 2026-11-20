@@ -66,12 +66,31 @@ assert.ok(!routes.WORKSPACES.some((item) => item.id === "kidi-events"), "retired
 assert.doesNotMatch(app, /KidiEvents|page === "kidi-events"/, "retired M15 diagnostic cannot load or render");
 assert.equal(existsSync(new URL("../mfe_ux_lab/cockpit/src/pages/KidiEvents.tsx", import.meta.url)), false);
 assert.deepEqual(routes.searchWorkspaces("kidi"), [], "retired diagnostic is absent from command discovery");
+
+// Keep the compatibility policy data-driven: every explicit legacy alias must
+// canonicalize to the focused XAUUSD M5 home and stay out of workspace discovery.
+// This catches a newly added alias that is accidentally accepted by the router
+// but rendered as a second product surface.
+for (const [legacyId, targetId] of Object.entries(routes.LEGACY_ROUTE_ALIASES)) {
+  assert.equal(targetId, "home", `${legacyId} must retain the focused-home target`);
+  assert.equal(routes.canonicalPage(legacyId), "home");
+  assert.equal(routes.workspaceFor(legacyId)?.id, "home");
+  assert.equal(routes.validPage(legacyId), true, `${legacyId} remains a compatible direct link`);
+  for (const hash of [`#${legacyId}`, `#/${legacyId}?source=legacy`, `#/${legacyId}/?source=legacy`]) {
+    assert.equal(routes.canonicalHash(hash), "#home");
+    assert.equal(routes.pageFromHash(hash), "home");
+  }
+  assert.ok(!routes.WORKSPACES.some((item) => item.id === legacyId), `${legacyId} has no workspace registration`);
+  assert.deepEqual(routes.searchWorkspaces(legacyId), [], `${legacyId} is absent from command discovery`);
+}
+
 for (const { id, component, search } of [
   { id: "entry-danger", component: "EntryDanger", search: "entry danger" },
   { id: "weekly-audit", component: "WeeklyAudit", search: "weekly audit" },
   { id: "strategy-ranking", component: "StrategyRanking", search: "compatibility map" },
   { id: "analysis", component: "Analysis", search: "governance" },
   { id: "playbook", component: "Playbook", search: "instability episodes" },
+  { id: "beast-lab", component: "BeastLab", search: "beast ensemble" },
 ]) {
   assert.equal(routes.canonicalPage(id), "home", `${id} navigation resolves to focused M5 home`);
   assert.equal(routes.workspaceFor(id)?.id, "home");
@@ -87,9 +106,9 @@ for (const { id, component, search } of [
   assert.deepEqual(routes.searchWorkspaces(search), [], `${id} is absent from command discovery`);
 }
 const release = readFileSync(new URL("../scripts/package-release.mjs", import.meta.url), "utf8");
-assert.doesNotMatch(release, /entry-danger|weekly-audit|strategy-ranking|'analysis'|'playbook'/, "retired routes must not enter future release screenshot lists");
+assert.doesNotMatch(release, /entry-danger|weekly-audit|strategy-ranking|'analysis'|'playbook'|'beast-lab'/, "retired routes must not enter future release screenshot lists");
 const tour = readFileSync(new URL("../docs/PRODUCT_TOUR.md", import.meta.url), "utf8");
-assert.doesNotMatch(tour, /screenshots\/(?:entry-danger|weekly-audit|strategy-ranking|analysis|playbook)\.jpg/, "tour must not advertise retired route screenshots");
+assert.doesNotMatch(tour, /screenshots\/(?:entry-danger|weekly-audit|strategy-ranking|analysis|playbook|beast-lab)\.jpg/, "tour must not advertise retired route screenshots");
 assert.deepEqual(new Set(routes.WORKSPACES.map((item) => item.id)),
   new Set([...app.matchAll(/page\s*===\s*"([^"]+)"\s*&&\s*</g)].map((match) => match[1])),
   "every supported workspace keeps its rendered route after legacy retirement");

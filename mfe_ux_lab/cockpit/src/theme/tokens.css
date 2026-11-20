@@ -1,34 +1,40 @@
 /* MFE Sapphire Blue & Neon Cyan — owner-specified palette, 2026-10-27.
    Supersedes earlier package surface colors. Presentation only.
    Typography: Inter + JetBrains Mono; RESEARCH / SHADOW_ONLY / NO_DECISION. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Owner-specified Sapphire Blue & Neon Cyan. Override legacy root palettes. */
-  --bg-app: #0A1124 !important;
-  --bg-canvas: #0A1124 !important;
-  --bg-panel: #121E3A !important;
-  --bg-card: linear-gradient(180deg, #17264A 0%, #101B35 100%) !important;
-  --bg-card-inner: #17264A !important;
-  --bg-elevated: #1D2F5A !important;
+  /* Neutral terminal chrome (workspace.css consumes these; page semantics stay themed below). */
+  --terminal-canvas: #0f131a;
+  --terminal-surface: #151a22;
+  --terminal-raised: #1b222c;
+  --terminal-hover: #232d39;
+  --terminal-accent: #37b7d6;
+  /* Neutral graphite terminal palette. Charts and evidence provide the colour. */
+  --bg-app: #0b0f14 !important;
+  --bg-canvas: #0b0f14 !important;
+  --bg-panel: #11161c !important;
+  --bg-card: #171d24 !important;
+  --bg-card-inner: #171d24 !important;
+  --bg-elevated: #202a33 !important;
   --panel-gradient: var(--bg-card) !important;
-  --cockpit-card-background: linear-gradient(180deg, #162447 0%, #0F1A34 100%) !important;
-  --border-panel: rgba(0, 212, 255, 0.25) !important;
-  --border-subtle: rgba(56, 189, 248, 0.18) !important;
-  --border-active: #00E5FF !important;
-  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-  --text-primary: #F8FAFC !important;
-  --text-secondary: #94B2D8 !important;
-  --accent-cyan: #00E5FF !important;
-  --accent-blue: #38BDF8 !important;
+  --cockpit-card-background: #171d24 !important;
+  --border-panel: rgba(148, 163, 184, 0.22) !important;
+  --border-subtle: rgba(148, 163, 184, 0.14) !important;
+  --border-active: #4bb6d4 !important;
+  --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+  --text-primary: #e7edf3 !important;
+  --text-secondary: #8b98a6 !important;
+  --accent-cyan: #4bb6d4 !important;
+  --accent-blue: #75a7ff !important;
   --accent-sky: var(--accent-blue) !important;
-  --bull-green: #00E676 !important;
-  --bear-red: #FF3B5C !important;
-  --warn-amber: #FFB300 !important;
-  --zone-purple: #B388FF !important;
+  --bull-green: #27c58a !important;
+  --bear-red: #ef6676 !important;
+  --warn-amber: #dca85b !important;
+  --zone-purple: #a38ad8 !important;
   --accent-purple: var(--zone-purple) !important;
-  --chart-canvas: #0B152B !important;
-  --chart-grid: rgba(0, 212, 255, 0.07) !important;
+  --chart-canvas: #0b0f13 !important;
+  --chart-grid: rgba(148, 163, 184, 0.08) !important;
 
   --status-danger-text: var(--bear-red) !important;
   --status-danger-bg: rgba(255, 59, 92, 0.18) !important;
@@ -64,7 +70,7 @@
   --mfe-r-card: 6px;
   --mfe-r-pill: 4px;
   --mfe-r-btn: 4px;
-  --mfe-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  --mfe-mono: "IBM Plex Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
   --bg-main: var(--bg-app) !important;
   --bg-panel-glass: var(--bg-panel) !important;
   --border-soft: var(--border-panel) !important;
@@ -73,8 +79,52 @@
   --accent: var(--accent-cyan) !important;
 }
 
-/* Inter for text · JetBrains Mono for numbers (helper class .mono / [data-num]) */
-body, button, select, input { font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif !important; }
+/* Light mode keeps the same semantic colors while lifting contrast for long research sessions. */
+[data-theme="light"] {
+  --terminal-canvas: #f4f6f8;
+  --terminal-surface: #ffffff;
+  --terminal-raised: #f8fafc;
+  --terminal-hover: #edf2f6;
+  --terminal-accent: #087ea4;
+  --bg-app: #f3f5f7 !important;
+  --bg-canvas: #f3f5f7 !important;
+  --bg-panel: #ffffff !important;
+  --bg-card: #ffffff !important;
+  --bg-card-inner: #f7fafc !important;
+  --bg-elevated: #e7edf2 !important;
+  --panel-gradient: var(--bg-card) !important;
+  --cockpit-card-background: #ffffff !important;
+  --border-panel: rgba(32, 48, 62, 0.18) !important;
+  --border-subtle: rgba(32, 48, 62, 0.12) !important;
+  --border-active: #087ea4 !important;
+  --card-shadow: 0 6px 18px rgba(32, 48, 62, 0.10) !important;
+  --text-primary: #17222d !important;
+  --text-secondary: #5b6b79 !important;
+  --accent-cyan: #087ea4 !important;
+  --accent-blue: #1769aa !important;
+  --accent-sky: var(--accent-blue) !important;
+  --bull-green: #087f5b !important;
+  --bear-red: #c43d50 !important;
+  --warn-amber: #9a5b00 !important;
+  --zone-purple: #6941c6 !important;
+  --accent-purple: var(--zone-purple) !important;
+  --chart-canvas: #f8fbfd !important;
+  --chart-grid: rgba(32, 48, 62, 0.09) !important;
+  --status-danger-bg: rgba(196, 61, 80, 0.10) !important;
+  --status-danger-border: rgba(196, 61, 80, 0.42) !important;
+  --status-safe-bg: rgba(8, 127, 91, 0.10) !important;
+  --status-safe-border: rgba(8, 127, 91, 0.42) !important;
+  --status-warn-bg: rgba(154, 91, 0, 0.11) !important;
+  --status-warn-border: rgba(154, 91, 0, 0.42) !important;
+  --status-info-bg: rgba(8, 126, 164, 0.10) !important;
+  --status-info-border: rgba(8, 126, 164, 0.38) !important;
+  --status-shadow-bg: rgba(105, 65, 198, 0.10) !important;
+  --status-shadow-border: rgba(105, 65, 198, 0.38) !important;
+  color-scheme: light;
+}
+
+/* IBM Plex keeps dense market labels readable while preserving tabular numbers. */
+body, button, select, input { font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif !important; }
 .mono, .num, [data-num] { font-family: var(--mfe-mono) !important; font-feature-settings: "tnum" 1; font-variant-numeric: tabular-nums; }
 
 /* Deep sapphire canvas; chart grid belongs only to the market plot. */
@@ -83,6 +133,20 @@ body {
   background-attachment: fixed !important;
   color-scheme: dark;
 }
+
+[data-theme="light"] body { color-scheme: light; }
+
+.theme-toggle {
+  border: 1px solid var(--mfe-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: var(--mfe-s2);
+  color: var(--mfe-text2);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--mfe-text); border-color: var(--border-active); }
 
 /* Themed dark scrollbars & keyboard focus rings */
 ::-webkit-scrollbar { width: 7px; height: 7px; }

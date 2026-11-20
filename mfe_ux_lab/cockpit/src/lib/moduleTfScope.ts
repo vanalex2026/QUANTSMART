@@ -30,6 +30,11 @@ const openMin = (b: OhlcBar): number => { const p = parseBarTime(b.t); return p.
 // design bar i closes (its decision time). Higher bar j is closed-as-of i iff openMin(j)+Hm ≤ openMin(i)+Dm.
 // Two-pointer, monotonic → O(n+m), and purely causal (depends only on higher bars with close ≤ decision).
 export function asOfHigherTf(designBars: OhlcBar[], higherBars: OhlcBar[], designTf: Timeframe, higherTf: Timeframe): number[] {
+  // A module may only read its design timeframe or a coarser (higher) one.  A
+  // finer source would require sub-bar ordering and is deliberately outside
+  // this closed-bar primitive; reject it instead of silently producing a
+  // misleading as-of map.
+  if (!isValidScope({ module_id: "__asof__", tf: higherTf }, designTf)) throw new Error("INVALID_MTF_SCOPE");
   const Dm = TF_MINUTES[designTf], Hm = TF_MINUTES[higherTf];
   const hOpen = higherBars.map(openMin);
   const out: number[] = new Array(designBars.length).fill(-1);
@@ -77,6 +82,7 @@ export interface TfScopeContext {
   higherEma: number[];            // per design bar → higher-TF EMA as-of (causal, NaN before warmup)
 }
 export function buildTfScopeContext(m1Bars: OhlcBar[], designTf: Timeframe, higherTf: Timeframe, emaPeriod = 20): TfScopeContext {
+  if (!isValidScope({ module_id: "__context__", tf: higherTf }, designTf)) throw new Error("INVALID_MTF_SCOPE");
   const designBars = designTf === "M1" ? m1Bars : completeBarsOnly(resampleM1(m1Bars, designTf as ResampleTf)).bars;
   const higherBars = higherTf === "M1" ? m1Bars : completeBarsOnly(resampleM1(m1Bars, higherTf as ResampleTf)).bars;
   const asOf = asOfHigherTf(designBars, higherBars, designTf, higherTf);

@@ -17,7 +17,7 @@ gauges, timeframe observations and structural reference zones. Entry assessment 
 Card evidence remain unavailable until their respective sources exist. [Open the
 full-resolution image](docs/screenshots/cockpit-overview.png).*
 
-[Get started](#quick-start) · [Explore the 17 workspaces](docs/PRODUCT_TOUR.md) ·
+[Get started](#quick-start) · [Explore the product tour](docs/PRODUCT_TOUR.md) ·
 [Build custom modules](docs/CUSTOM_MODULES.md) · [Video tutorials](docs/TUTORIALS.md) ·
 [Watch the tutorial video](https://drive.google.com/drive/folders/1QuFV7GtY4ttnVvgeeI0HlnZDH2hOpVAu?usp=sharing) · [Connect MT5](#connect-xm--another-mt5-broker)
 
@@ -66,6 +66,24 @@ The separate, opt-in [Card Demo runner preview](docs/DEMO_AUTOMATION.md) can eva
 newly closed candles and execute supported Card rules on Demo after an explicit Start.
 See [verification and limits](docs/VERIFICATION.md), [LICENSE](LICENSE) and
 [SECURITY.md](SECURITY.md).
+
+### Candle Pattern Atlas
+
+The **Pattern Atlas** workspace adds a causal candle-analogue study for XAUUSD on
+M5, M15 and M30, with H1 retained as broker context. A live MT5 session requests
+three years of closed bars in bounded range chunks; M1 is never requested by this
+workflow. It normalizes candle geometry by ATR, finds non-overlapping
+historical windows that ended before the current window, and reports the observed
+UP / DOWN / FLAT distribution for the next one, two and three closed candles.
+It also answers exact recurrence directly: whether the complete recent sequence
+has appeared before, how many times, when it last appeared and its median repeat
+distance.
+Each loop refreshes the closed-bar tape, reruns the walk-forward diagnostic and
+shows sample size, majority baseline and lift. Later loops also classify the
+current volatility/trend regime, score pattern novelty and persist a local
+evolution ledger so a new market shape is visible instead of being silently
+forced into an old label. The result is a shadow research measurement; it does
+not produce an order or a promise of future performance.
 
 ## Quick start
 
@@ -188,6 +206,38 @@ suffix variants such as GOLD.i#. Choose a different detected symbol in the
 connection dialog if required. The selected symbol is enabled in Market Watch.
 A changed terminal/account clears cached data and the previous mapping.
 
+For the three-year Pattern Atlas pull, set MT5 **Tools → Options → Charts → Max
+bars in chart** above the expected M5 history size (for example `400000`), then
+restart or reconnect MT5. The app reports partial broker coverage with an
+asterisk and never fills missing history silently.
+If Pattern Atlas reports `HISTORY_CONTRACT_MISMATCH`, `OUTSIDE_REQUESTED_WINDOW`
+or `HISTORY_PROVENANCE_MISSING`, restart the local read-only bridge so its
+history contract is reloaded before retrying the pull.
+
+### Durable closed-candle restart recovery
+
+Successful, validated XAUUSD M5 closed-bar reads are also written to the local
+SQLite state file `.mfe-state/closed-candles.sqlite3`. The file is created on
+the first successful write; a normal launcher start does not populate it with
+market data. To place it elsewhere, set `MFE_CLOSED_CANDLES_DB` to a writable
+SQLite path before starting the launcher. The database contains no MT5 login,
+password or access token. Rows are separated by account ID, broker server,
+broker symbol and configured server timezone, so a reconnect or account switch
+cannot reuse another account's tail.
+
+After a bridge restart, a connected M5 read that returns no rows may use the
+previously written, scope-matching tail and reports
+`CLOSED_CANDLE_STORE_FALLBACK`. This is a recovery aid, not a fresh broker
+confirmation: the chart keeps its labelled local/verified status until a new
+closed-bar read satisfies the normal MT5 contract. The bridge never stores a
+forming candle or promotes a partial history response through this path.
+
+Bridge responses expose `latest_closed_bar_age_seconds`; the focused chart's
+connection/history status mirrors the newest accepted closed-bar UTC time and
+its freshness. If the latest time stops advancing,
+check the status before relying on the displayed tail, reconnect MT5, and
+restart the local launcher after changing the timezone or database path.
+
 If the terminal emits broker wall-clock fields instead of UTC, configure
 `MFE_MT5_SERVER_TIMEZONE` in your local `.env` and restart the launcher. This defaults
 to `UTC`. The XM Global installation verified here uses `Europe/Athens`, with
@@ -305,3 +355,42 @@ Current downloadable preview: [1.2.0-rc.7](https://github.com/Jokejoker-designer
 In Microscope, select a saved CSV and Strategy Card, then open **Decision & outcome evidence**. Build a local journal to link observed engine signals, policy blocks, modeled fills and completed t[...]
 
 The journal covers observed canonical signals on 61–5,000 design bars. It does not invent structural-thesis identity, missing veto events, exact excursions or calibrated probabilities. See the [...]
+
+### Focused M5 chart direction
+
+The chart inspection surface now opens on **XAUUSD M5** and uses a scoped
+black/white TradingView-like canvas with pan, zoom, crosshair and drawing tools.
+Drawings and pan/zoom state are namespaced by symbol and timeframe. Brush
+strokes are anchored to closed-bar timestamps, so a refreshed two-year M5 tape
+re-anchors the inspection without silently moving annotations to another bar.
+Use Cursor to select saved drawings, `[` / `]` to cycle them, drag their bodies
+or handles to edit, and Delete/Backspace to remove one; Escape cancels or clears
+selection. The focused route keeps the unrelated workspace jump palette hidden,
+and a scoped palette guard keeps focused evidence chrome monochrome while
+directional candles retain their explicit teal/red colors.
+The chart remains SHADOW_ONLY and has no decision or order authority.
+Current pattern chips retain exact concept and closed-bar UTC identity and state `SHADOW_ONLY; NO_DECISION; no order authority`. The focused forecast keeps verified MT5 history, fresh closed-bar evidence, walk-forward coverage, causal support, independent analogue coverage, consensus margin and support metadata as separate gates; any failed gate is shown as `WAIT` with its reason. A historical verified read-only runtime captured all gates passing and reported `RESEARCH LANDMARK READY / UP`; this remains descriptive research evidence, not a current live-market claim. Current runtime evidence must come from a fresh receipt, and unavailable or unverified MT5 history keeps the forecast at `WAIT`. Refreshes promote only through a verified closed boundary, and forming or malformed rows fail closed. On phones through 430px, the pattern evidence shelf scrolls within a bounded region while its authority line remains visible beside the chips and `Why / PDF` explanation.
+When MT5 is already open, the shell performs a bounded read-only Auto-Attach
+check without sending credentials; it cancels on teardown, stops after three
+attempts and pauses after explicit detach. Focused M5 refresh adds a unique
+cache-busting probe and promotes new data only through a verified closed bar,
+preserving account/symbol namespace and UTC provenance. Malformed, duplicate,
+off-grid or forming-bar responses fail closed. Modified chart shortcuts retain
+native browser behavior. The orphan BeastDeck wrapper is removed while shared
+Beast research services remain.
+The durable handoff state for future AI sessions is tracked in
+[`docs/AI_SESSION_STATE.md`](docs/AI_SESSION_STATE.md). The PDF-derived
+price-action concepts are summarized in
+[`docs/PRICE_ACTION_KNOWLEDGE_MAP.md`](docs/PRICE_ACTION_KNOWLEDGE_MAP.md),
+with a machine-readable companion at
+[`docs/price_action_knowledge_map.json`](docs/price_action_knowledge_map.json).
+The concise requirement and evidence ledger is maintained in
+[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+
+All 12 source chapters and 36 curated source lenses are indexed; the indexed
+chapter interval is fully reviewed at 419/419 pages, while the metadata-only
+index of all 438 PDF pages remains available at
+[`docs/price_action_page_index.json`](docs/price_action_page_index.json). Use
+`node scripts/price-action-source-index.mjs --help` to query the existing local
+OCR by terms, chapter, printed/PDF page or figure mention without extracting the
+book again. Geometry proxies and source-only notes remain distinct.

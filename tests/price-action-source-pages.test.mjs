@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+const app=fileURLToPath(new URL('../mfe_ux_lab/cockpit/',import.meta.url));
+const require=createRequire(app+'package.json');
+const {build}=require('esbuild'),ts=require('typescript');
+const bundle=await build({stdin:{contents:"export * from './src/lib/priceActionSourcePages.ts'; export {PRICE_ACTION_SOURCE} from './src/lib/priceActionDetector.ts';",resolveDir:app},bundle:true,write:false,format:'esm',platform:'node',logLevel:'silent'});
+const {formatPriceActionSourcePages:format,PRICE_ACTION_SOURCE}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
+test('printed anchors map to actual PDF pages without truncating or mutating saved identities',()=>{
+  const anchors=Object.freeze([13,14,15,26,27,28,29]);
+  assert.equal(format(anchors),'Printed pp. 13-15, 26-29 · PDF pp. 23-25, 36-39');
+  assert.equal(format([247]),'Printed p. 247 · PDF p. 257');
+  assert.equal(format([421]),'Printed p. 421 · PDF p. 431');
+  assert.equal(format([10,8,9,8]),'Printed pp. 8-10 · PDF pp. 18-20');
+  for(const invalid of [undefined,[],[NaN],[0],[422],[1.1]])assert.equal(format(invalid),'Source page anchors unavailable');
+  assert.deepEqual(anchors,[13,14,15,26,27,28,29]);
+});
+test('actual current and historical signal converters use the same source page mapping',()=>{
+  const source=readFileSync(app+'src/pages/Microscope.tsx','utf8');
+  const ast=ts.createSourceFile('Microscope.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  const functions=new Map(ast.statements.filter(ts.isFunctionDeclaration).map(node=>[node.name?.text,node.getText(ast)]));
+  const compile=name=>new Function('formatPriceActionSourcePages','PRICE_ACTION_SOURCE','focusedSnapshotTimestampsEqual',`${ts.transpileModule(functions.get(name),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText}; return ${name};`)(format,PRICE_ACTION_SOURCE,(a,b)=>Date.parse(a)===Date.parse(b));
+  const marker={conceptId:'support_resistance',pageAnchors:[8,9,10],direction:'UP',position:'below',i:0,time:'2024-01-01T00:00:00Z',price:100,score:.8,label:'support resistance'};
+  const current=compile('priceActionMarkerToSignal')(marker);
+  assert.match(current.measures,/Printed pp\. 8-10 · PDF pp\. 18-20/);
+  const past=compile('priceActionOccurrenceToSignal')({i:0,time:marker.time,direction:'UP',nextBar:'DOWN',score:.8},marker.conceptId,[{t:marker.time,c:100}]);
+  assert.match(past.measures,/Printed pp\. 8-10 · PDF pp\. 18-20/);
+  assert.equal(past.outcome,'wrong');assert.equal(past.time,marker.time);
+  assert.match(readFileSync(app+'src/components/ChartPatternInspector.tsx','utf8'),/formatPriceActionSourcePages\(knowledge.pages\)/);
+  assert.match(readFileSync(app+'src/components/PriceActionKnowledgePanel.tsx','utf8'),/formatPriceActionSourcePages\(selected.pages\)/);
+});

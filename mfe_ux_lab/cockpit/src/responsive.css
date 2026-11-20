@@ -10,15 +10,19 @@
 .workspace-shell :where(.quant-diagnostics,.quant-market-column,.quant-decision-column,.ms-col) { gap:var(--workspace-gap); }
 .workspace-shell .quant-chart-canvas { height:clamp(320px,52dvh,700px); min-width:0; }
 .workspace-shell .ms .ms-chart { height:clamp(360px,65dvh,820px); min-height:0; min-width:0; }
+.workspace-shell .ms-focused .m5-empty-chart { flex:1; min-width:0; }
+.workspace-shell .ms-focused .m5-empty-content { box-sizing:border-box; width:calc(100% - 32px); max-width:440px; margin:16px; padding:24px 20px; }
+.workspace-shell .ms-focused .m5-empty-content > [role="status"] { display:flex; flex-direction:column; align-items:center; gap:8px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.workspace-shell .ms-focused .m5-empty-content small { display:block; max-width:100%; }
+/* The focused home hides both context columns and must collapse the shared
+   three-column grid before the chart is laid out. Without this higher-
+   specificity override the chart becomes the first 220–300px grid track on
+   wide screens, leaving the rest of the viewport empty. */
+.workspace-shell .ms-focused .ms-grid { display:block; width:100%; }
+.workspace-shell .ms-focused .ms-chart { width:100%; }
 .workspace-shell .quant-market-widgets { grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--workspace-gap); }
 .workspace-shell .quant-workspace .product-kpi-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:var(--workspace-gap); }
-.workspace-shell .quant-telemetry { container-type:inline-size; --dial-size:clamp(44px,3.6vw,56px); min-width:0; padding:clamp(8px,.75vw,12px); }
-.workspace-shell .quant-telemetry-reading { gap:clamp(6px,.65vw,10px); min-width:0; }
-.workspace-shell .quant-dial { flex-shrink:0; width:var(--dial-size); height:var(--dial-size); }
-.workspace-shell .quant-telemetry strong { min-width:0; font-size:clamp(13px,1.05vw,17px); overflow-wrap:anywhere; }
 .workspace-shell .quant-workspace .product-kpi-label { display:block; max-width:100%; font-size:clamp(13px,1.05vw,17px); line-height:1.4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.workspace-shell .quant-telemetry small { min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-@container(max-width:180px) { .quant-telemetry-reading { flex-wrap:wrap; }.quant-telemetry-reading strong { font-size:13px; } }
 .workspace-shell .strategy-canvas-layout { --studio-height:clamp(480px,calc(100dvh - 180px),1000px); }
 .workspace-shell .strategy-canvas-pane { height:var(--studio-height); min-width:0; min-height:0; }
 .workspace-shell .strategy-canvas-inspector { overflow-y:auto; }
@@ -29,6 +33,10 @@
 .workspace-shell .mfe-market-chart { min-width:0; min-height:0; max-width:100%; }
 .workspace-shell .mfe-chart-plot { min-width:0; min-height:0; }
 .workspace-shell .mfe-chart-plot>svg { max-width:100%; }
+.workspace-shell .microchart-canvas:focus-visible { outline:2px solid var(--accent-cyan); outline-offset:-2px; }
+.workspace-shell .microchart-bottom-bar { flex-wrap:wrap; line-height:1.3; }
+.workspace-shell .microchart-keyboard-help,
+.workspace-shell .microchart-keyboard-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .workspace-shell .workspace-header { gap:clamp(4px,.8vw,16px); padding-inline:clamp(8px,1vw,20px); flex-wrap:nowrap; white-space:nowrap; }
 .workspace-shell .workspace-context { gap:clamp(4px,.65vw,12px); }
 .workspace-shell .workspace-navigation { gap:clamp(4px,.6vw,10px); }
@@ -44,6 +52,44 @@
 .workspace-shell :where(.ms-mtf,.ms-bot) { min-width:0; }
 .workspace-shell .ms .ms-ctrl { top:48px; max-height:none; }
 .workspace-shell .ms .ms-seg { max-width:100%; flex-wrap:wrap; }
+.workspace-shell .ms .ms-chart-only-toggle {
+  flex:0 0 auto;
+  min-width:0;
+  min-height:32px;
+  padding-inline:10px;
+  white-space:nowrap;
+}
+.workspace-shell .ms .ms-chart-only-toggle:focus-visible {
+  outline:2px solid var(--mfe-text, #f5f5f5);
+  outline-offset:2px;
+}
+/* Keep the plot's measured viewport independent from the evidence/readout
+   panels below it. Their content can expand as signals are inspected without
+   flex/grid remeasurement shrinking or jumping the chart surface. */
+.workspace-shell .ms-focused .ms-chart {
+  flex:0 0 auto;
+  contain:layout;
+}
+/* Size the whole chart-only workspace to the viewport, then let the control
+   bar take its actual wrapped height. The plot gets the remainder, including
+   its tool rail, evidence strips and footer, without guessing a chart gutter. */
+.workspace-shell[data-focus-surface="m5-chart"] { --focused-header-height:54px; padding-bottom:0; }
+.workspace-shell[data-focus-surface="m5-chart"] .main-wide { padding-bottom:12px; }
+.workspace-shell[data-focus-surface="m5-chart"] .ms-focused[data-chart-only="true"] {
+  display:flex;
+  flex-direction:column;
+  height:calc(100dvh - var(--focused-header-height) - clamp(10px,1vw,20px) - 12px);
+  min-height:420px;
+}
+.workspace-shell .ms-focused[data-chart-only="true"] > .ms-ctrl { flex:none; }
+.workspace-shell .ms-focused[data-chart-only="true"] > .ms-grid { flex:1; min-height:0; }
+.workspace-shell[data-focus-surface="m5-chart"] .ms-focused[data-chart-only="true"] .ms-chart {
+  height:100%;
+  min-height:0;
+}
+@media(max-width:640px) {
+  .workspace-shell[data-focus-surface="m5-chart"] { --focused-header-height:48px; }
+}
 .workspace-shell .strategy-canvas-summary { grid-template-columns:minmax(0,210px) minmax(0,1fr); }
 .workspace-shell .strategy-canvas-summary>* { min-width:0; }
 @media(max-width:1359.98px) { .workspace-shell .quant-workspace .product-kpi-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
@@ -70,8 +116,150 @@
 }
 @media(max-width:639.98px) { .workspace-shell .quant-workspace .product-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }.workspace-shell .ms-mtf { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:479.98px) { .workspace-shell .command-trigger>kbd { display:none; }.workspace-shell .quant-diagnostics,.workspace-shell .quant-decision-column,.workspace-shell .ms .ms-grid>.ms-col,.workspace-shell .quant-market-widgets { grid-template-columns:minmax(0,1fr); } }
+
+/* The focused M5 chart keeps its tool rail beside the plot on desktop. On a
+   phone that 40px rail plus the price axis leaves too little width for candle
+   inspection, so turn it into a horizontally scrollable control strip. The
+   buttons keep their roving tab stop and keyboard shortcuts; only the visual
+   placement changes. */
+@media(max-width:639.98px) {
+  .workspace-shell .mfe-market-chart.microchart-tv { flex-direction:column; }
+  .workspace-shell .mfe-market-chart.microchart-tv .microchart-tool-rail {
+    width:100% !important;
+    /* The rail receives horizontal padding below. Keep that padding inside
+       the chart width; with the default content-box sizing a 100% rail was
+       8px wider than the plot and introduced page-level horizontal scrolling
+       on phones. */
+    box-sizing:border-box;
+    /* 36px controls plus 6px vertical breathing room keep the chart tools
+       comfortably tappable on a phone without taking chart height away from
+       the plot. */
+    height:48px;
+    flex:0 0 48px;
+    flex-direction:row;
+    justify-content:flex-start;
+    overflow-x:auto;
+    overflow-y:hidden;
+    border-right:0;
+    border-bottom:1px solid var(--border-subtle);
+    padding:6px 4px;
+  }
+  .workspace-shell .mfe-market-chart.microchart-tv .microchart-tool-rail > button {
+    width:36px !important;
+    height:36px !important;
+    flex:0 0 36px !important;
+  }
+  .workspace-shell .mfe-market-chart.microchart-tv .microchart-tool-spacer { flex:1 0 6px; min-width:6px; min-height:0; }
+  .workspace-shell .mfe-market-chart.microchart-tv .microchart-main { min-height:0; }
+}
+@media(max-width:560px) {
+  .workspace-shell .microchart-bottom-bar { gap:6px 10px !important; align-items:flex-start !important; }
+  /* Keep the evidence/authority status readable as its own mobile row. */
+  .workspace-shell .microchart-bottom-bar > span[role="status"] { width:100%; flex:0 0 100%; order:2; min-width:0; }
+  .workspace-shell .microchart-bottom-bar > span[role="img"] { width:100%; margin-left:0 !important; order:3; }
+  .workspace-shell .microchart-bottom-bar > span:last-child { width:100%; line-height:1.35; white-space:normal; }
+}
 @media(max-width:359.98px) { .workspace-shell .quant-workspace .product-kpi-grid { grid-template-columns:minmax(0,1fr); }.workspace-shell .workspace-brand { font-size:0; }.workspace-shell .workspace-brand>span { font-size:15px; }.workspace-shell .workspace-context select { max-width:76px; } }
 
 .workspace-shell .strategy-canvas-actions { display:flex; flex-wrap:wrap; gap:6px; }
 .workspace-shell .strategy-canvas-actions>button { flex:1 1 auto; min-width:0; max-width:100%; }
 .workspace-shell .strategy-canvas-pane:focus-visible { outline:2px solid var(--accent-cyan); outline-offset:2px; }
+
+/* Terminal chrome remains usable when the content grid collapses. The rail is
+   intentionally removed before the research columns become single column. */
+@media (max-width:1080px) {
+  .workspace-shell .main-wide { padding-inline:clamp(12px,2vw,24px); }
+  .workspace-shell .workspace-header { left:0; }
+  .workspace-shell .workspace-statusbar { left:0; }
+}
+@media (max-width:640px) {
+  .workspace-shell .main-wide { padding-inline:12px; }
+  .workspace-shell .workspace-header { padding-inline:10px; }
+  .workspace-shell .workspace-subnav { padding-inline:12px; }
+}
+
+/* The focused home intentionally removes theme and workspace controls, but
+   language switching remains part of the bilingual chart surface. Keep the
+   compact VI/EN control in the 48px header at phone widths so keyboard and
+   touch users can switch copy before opening a source inspector. */
+@media (max-width:640px) {
+  .workspace-shell[data-focus-surface="m5-chart"] .locale-toggle {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:36px;
+    min-height:36px;
+    padding-inline:8px;
+    flex:0 0 auto;
+  }
+}
+
+@media (max-width:640px) {
+  .workspace-shell .ms-focused .ms-chart-only-toggle {
+    flex:1 1 100%;
+    order:20;
+    min-height:36px;
+  }
+}
+
+/* The focused home surface drops the desktop rail and subnav. At phone
+   widths the header is 48px high, so keep the M5 plot in the viewport instead
+   of carrying the desktop 112px gutter into the chart-first layout. The
+   control bar may wrap above the plot; the page remains scrollable when its
+   labels need more than one row. */
+@media (max-width:640px) {
+  .workspace-shell[data-focus-surface="m5-chart"] .ms-focused .ms-chart {
+    min-height:calc(100dvh - 94px);
+    height:calc(100dvh - 94px);
+  }
+}
+
+
+/* Compact focused chrome leaves the plot as the primary surface. */
+.workspace-shell[data-focus-surface="m5-chart"] { --focused-header-height:36px; }
+.workspace-shell[data-focus-surface="m5-chart"] { padding-top:var(--focused-header-height,36px); }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-header { height:36px; min-height:36px; padding-inline:10px; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-context { display:none; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools { width:100%; justify-content:flex-end; gap:6px; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .connection-status { width:24px; min-height:24px; justify-content:center; padding:0; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .connection-status > span:not(.connection-dot) { display:none; }
+.workspace-shell[data-focus-surface="m5-chart"] .workspace-tools .locale-toggle { min-width:44px; min-height:24px; padding-inline:7px; font-size:10px; }
+
+/* Several current concepts can share one closed candle. Keep the complete
+   native chip/Why-PDF shelf available on phones without letting eight wrapped
+   evidence labels consume the plot. Keyboard focus scrolls each control into
+   view; opening Why / PDF stays inside the same bounded evidence shelf. */
+@media (max-width:430px) {
+  .workspace-shell .ms-focused .mfe-market-chart.microchart-tv .micro-pattern-status {
+    flex:0 0 auto;
+    max-height:112px;
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
+    scroll-padding-block:4px;
+  }
+  .workspace-shell .ms-focused .mfe-market-chart.microchart-tv .micro-pattern-status-chips {
+    max-width:100%;
+    padding:2px;
+  }
+  .workspace-shell .ms-focused .mfe-market-chart.microchart-tv .micro-pattern-status-button {
+    box-sizing:border-box;
+    max-width:100%;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    flex-shrink:0;
+  }
+  /* Keep the read-only boundary visible while the bounded shelf scrolls. The
+     authority line otherwise follows the chips/details and starts below the
+     112px viewport on dense current-pattern evidence. */
+  .workspace-shell .ms-focused .mfe-market-chart.microchart-tv .micro-pattern-status-authority {
+    order:-1;
+    position:sticky;
+    top:0;
+    z-index:1;
+    flex-basis:100%;
+    padding-block:2px;
+    background:var(--mfe-bg,#050505);
+  }
+}

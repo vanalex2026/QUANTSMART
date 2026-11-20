@@ -1,14 +1,14 @@
 .csv-import {
   margin: 10px 0;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 212, 255, 0.25);
-  background: #121e3a;
+  border: 1px solid var(--border-panel);
+  background: var(--bg-panel);
   border-radius: 6px;
-  color: #cbd5e1;
+  color: var(--text-primary);
 }
 .csv-import summary {
   cursor: pointer;
-  color: #38bdf8;
+  color: var(--accent-cyan);
   font-weight: 600;
 }
 .csv-import p {
@@ -33,15 +33,15 @@
   width: 100%;
   min-width: 0;
   padding: 7px;
-  background: #1d2f5a;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  color: #f8fafc;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-panel);
+  color: var(--text-primary);
   border-radius: 4px;
 }
 .csv-import button {
-  background: #087e9a;
-  color: #fff;
-  border: 1px solid #22d3ee;
+  background: var(--accent-cyan);
+  color: var(--bg-app);
+  border: 1px solid var(--border-active);
   border-radius: 4px;
   padding: 7px 12px;
   cursor: pointer;
@@ -51,7 +51,7 @@
   cursor: default;
 }
 .csv-import :focus-visible {
-  outline: 2px solid #22d3ee;
+  outline: 2px solid var(--accent-cyan);
   outline-offset: 3px;
 }
 .csv-import-row {
@@ -68,27 +68,47 @@
 .csv-import-preview {
   overflow: auto;
   max-width: 100%;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* Keep horizontal evidence scrolling legible in both theme palettes. */
+  scrollbar-color: var(--border-panel) var(--bg-panel);
+}
+.csv-import-preview:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 3px;
 }
 .csv-import table {
   width: 100%;
+  min-width: 560px;
   font-size: 11px;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+}
+.csv-import table caption {
+  padding: 0 5px 6px;
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  line-height: 1.4;
+  text-align: left;
 }
 .csv-import td,
 .csv-import th {
   text-align: left;
   padding: 5px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
+.csv-import thead th {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
 .csv-import [role="alert"] {
-  color: #fda4af;
+  color: var(--status-danger-text);
 }
 .csv-import-result {
   margin-top: 12px;
   padding: 12px;
-  background: #17264a;
+  background: var(--bg-card-inner);
   border-radius: 4px;
 }
 .csv-import-result ul {
